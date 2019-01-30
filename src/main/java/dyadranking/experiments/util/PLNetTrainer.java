@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 import jaicore.ml.core.exception.TrainingException;
+import jaicore.ml.core.predictivemodel.IPredictiveModelConfiguration;
+import jaicore.ml.dyadranking.algorithm.IPLNetDyadRankerConfiguration;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
 
@@ -18,6 +20,27 @@ public class PLNetTrainer {
 	
 	private static void printUsage() {
 		System.out.println("Usage: trainingdata outputpath" );
+	}
+	
+	/**
+	 * Pretty prints a PLNet's configuration.
+	 */
+	public static void printConfig(IPredictiveModelConfiguration config) {
+		IPLNetDyadRankerConfiguration configuration = (IPLNetDyadRankerConfiguration) config;
+		StringBuilder output = new StringBuilder();
+		output.append("PLNet config:")
+			  .append("\n\tLearning rate:\t\t\t").append(configuration.plNetLearningRate())
+			  .append("\n\tHidden nodes:\t\t\t").append(configuration.plNetHiddenNodes())
+			  .append("\n\tSeed:\t\t\t\t").append(configuration.plNetSeed())
+			  .append("\n\tActivation function:\t\t").append(configuration.plNetActivationFunction())
+			  .append("\n\tMax epochs:\t\t\t").append(configuration.plNetMaxEpochs())
+			  .append("\n\tMini batch size:\t\t").append(configuration.plNetMiniBatchSize())
+			  .append("\n\tEarly stopping interval:\t").append(configuration.plNetEarlyStoppingInterval())
+			  .append("\n\tEarly stopping patience:\t").append(configuration.plNetEarlyStoppingPatience())
+			  .append("\n\tEarly stopping train ratio:\t").append(configuration.plNetEarlyStoppingTrainRatio())
+			  .append("\n\tEarly stopping retrain:\t\t").append(configuration.plNetEarlyStoppingRetrain())
+			  .append("\n");
+		System.out.print(output.toString());
 	}
 	
 	public static void main(String[] args) {
@@ -44,7 +67,7 @@ public class PLNetTrainer {
 		
 		// Train and save model
 		PLNetDyadRanker plNet = new PLNetDyadRanker();
-		plNet.printConfig();
+		printConfig(plNet.getConfiguration());
 		System.out.println("Beginning training at: " + dtf.format(LocalDateTime.now()));
 		try {
 			plNet.train(data);
