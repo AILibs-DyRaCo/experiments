@@ -1,5 +1,6 @@
 package dyadranking.performance;
 
+import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public class DyadDatasetGenerator {
 	private static final String dyadTable = "dyad_dataset_new";
 
 	private static final String datasetMetaFeatureTable = "dataset_metafeatures_mirror";
+	
 	private static final Pattern arrayDeserializer = Pattern.compile(" ");
 
 	private enum X_METRIC {
@@ -188,27 +190,32 @@ public class DyadDatasetGenerator {
 		return new DyadRankingDataset(sparseDyadRankingInstances);
 	}
 
-	public static void main(String... args) throws SQLException, TrainingException {
+	public static void main(String... args) throws SQLException, TrainingException, IOException {
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		TrainTestDatasetIds split = getTrainTestSplit(0.7d);
-		DyadRankingDataset trainDataset = getSparseDyadDataset(42, 400, 10, split.trainDatasetIds, adapter);
-		DyadRankingDataset testDataset = getSparseDyadDataset(43, 200, 10, split.testDatasetIds, adapter);
+		DyadRankingDataset trainDataset = getSparseDyadDataset(42, 3000, 10, split.trainDatasetIds, adapter);
+	//	DyadRankingDataset testDataset = getSparseDyadDataset(43, 200, 10, split.testDatasetIds, adapter);
 		
 		DyadStandardScaler scaler = new DyadStandardScaler();
 		scaler.fit(trainDataset);
-		scaler.transformInstances(trainDataset);
-		scaler.transformInstances(testDataset);
+		scaler.printMeans();
+		scaler.printStandardDeviations();
+//		scaler.transformInstances(trainDataset);
+//		scaler.transformInstances(testDataset);
 		
-		ADyadRanker ranker = new PLNetDyadRanker();
+		PLNetDyadRanker ranker = new PLNetDyadRanker();
+		System.out.println(ranker.getConfiguration().toString());
 		ranker.train(trainDataset);
-		try {
-			double loss = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testDataset, ranker);
-			System.out.println("Average Kendalls Tau: " + loss);
-		} catch (PredictionException e) {
-			e.printStackTrace();
-		}
+		ranker.saveModelToFile("out");
+//		try {
+//			double loss = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testDataset, ranker);
+//			System.out.println("Average Kendalls Tau: " + loss);
+//		} catch (PredictionException e) {
+//			e.printStackTrace();
+//		}
 		adapter.close();
 	}
+	
 
 	private static TrainTestDatasetIds getTrainTestSplit(double ratio) {
 		List<Integer> allDatasets = Arrays.stream(allowedDatasetIds).mapToObj(i -> (Integer) i)

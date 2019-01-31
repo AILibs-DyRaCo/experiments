@@ -37,7 +37,7 @@ public class PerformanceSamplesToTreeMiner {
 
 	public static void main(String... args)
 			throws IOException, URISyntaxException, InterruptedException, SQLException, OWLOntologyCreationException {
-		String resultTableName = "dyad_dataset_new";
+		String resultTableName = "dyad_dataset_support_0_01";
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 
 		ObjectMapper mapper = new ObjectMapper();
