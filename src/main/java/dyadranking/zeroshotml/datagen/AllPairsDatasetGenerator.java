@@ -111,7 +111,9 @@ public class AllPairsDatasetGenerator {
 		File outputFile = new File(outputPath);
 		try {
 			outputFile.createNewFile();
-			data.serialize(new BufferedOutputStream(new FileOutputStream(outputFile)));
+			BufferedOutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile));
+			data.serialize(outputStream);
+			outputStream.close();
 		} catch (IOException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
