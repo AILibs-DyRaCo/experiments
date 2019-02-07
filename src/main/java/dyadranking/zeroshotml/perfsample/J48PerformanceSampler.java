@@ -50,6 +50,12 @@ public class J48PerformanceSampler {
 				put("3", "dataset_3_kr-vs-kp.arff");
 				put("30", "dataset_30_page-blocks.arff");
 				put("32", "dataset_32_pendigits.arff");
+				put("5", "dataset_5_arrhythmia.arff");
+				put("6", "dataset_6_letter.arff");
+				put("36", "dataset_36_segment.arff");
+				put("38", "dataset_38_sick.arff");
+				put("44", "dataset_44_spambase.arff");
+				put("46", "dataset_46_splice.arff");
 		}};
 	
 	public static void main(String[] args) {

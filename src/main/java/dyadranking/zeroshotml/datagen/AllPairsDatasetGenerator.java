@@ -1,7 +1,7 @@
 package dyadranking.zeroshotml.datagen;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.sql.ResultSet;
@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -24,11 +25,15 @@ import jaicore.ml.dyadranking.dataset.SparseDyadRankingInstance;
 
 public class AllPairsDatasetGenerator {
 	
-	private static final String outputPath = "datasets/zeroshot/J48train.dr";
+	private static final int SEED = 1;
 	
-	private static final int NUM_FEATURES = 2;
+	private static final String outputPath = "datasets/zeroshot/SMORBFtrain.dr";
+	
+	private static final int NUM_FEATURES = 3;
 	
 	private static final String J48_HYPERPARS = "C_pruning_confidence, M_min_inst";
+	
+	private static final String SMORBF_HYPERPARS = "C_complexity_const_exp, L_tolerance_exp, RBF_gamma_exp";
 	
 	private static final int[] datasets = { 12, 14, 16, 18, 20, 21, 22, 23, 24, 26, 28, 3, 30, 32 };
 	
@@ -38,8 +43,8 @@ public class AllPairsDatasetGenerator {
 	
 	public static List<Pair<double[], Double>> getSamplesForDataset(SQLAdapter adapter, int dataset) throws SQLException {
 		ResultSet res = adapter.getResultsOfQuery(
-				"SELECT " + J48_HYPERPARS + ", performance "
-				+ "FROM `j48_performance_samples`"
+				"SELECT " + SMORBF_HYPERPARS + ", performance "
+				+ "FROM `smorbf_performance_samples`"
 				+ "WHERE dataset = " + dataset);
 		
 		res.first();
@@ -53,6 +58,8 @@ public class AllPairsDatasetGenerator {
 			Pair<double[], Double> samplePerfPair = new Pair<double[], Double>(sample, res.getDouble(NUM_FEATURES + 1));
 			sampleList.add(samplePerfPair);
 		} while (res.next());
+		
+		System.out.println("Processing data set: " + dataset);
 		
 		return sampleList;	
 	}
@@ -100,12 +107,11 @@ public class AllPairsDatasetGenerator {
 			}
 		}
 		
-		Collections.shuffle(data);
-		
+		Collections.shuffle(data, new Random(SEED));
 		File outputFile = new File(outputPath);
 		try {
 			outputFile.createNewFile();
-			data.serialize(new FileOutputStream(outputFile));
+			data.serialize(new BufferedOutputStream(new FileOutputStream(outputFile)));
 		} catch (IOException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
