@@ -13,13 +13,16 @@ import jaicore.ml.core.predictivemodel.IPredictiveModelConfiguration;
 import jaicore.ml.dyadranking.algorithm.IPLNetDyadRankerConfiguration;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
+import jaicore.ml.dyadranking.util.DyadNormalScaler;
+import jaicore.ml.dyadranking.util.DyadStandardScaler;
 
 public class PLNetTrainer {
 	
 	private static final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");
 	
 	private static void printUsage() {
-		System.out.println("Usage: trainingdata outputpath" );
+		System.out.println("Usage: trainingdata outputpath preprocess[optional] \n"
+				+ "preprocess can be one of { standardize, standardizeinstances, standardizealternatives, normalize, normalizeinstances, normalizealternatives }" );
 	}
 	
 	/**
@@ -44,7 +47,7 @@ public class PLNetTrainer {
 	}
 	
 	public static void main(String[] args) {
-		if (args.length != 2)
+		if (args.length < 2)
 			printUsage();
 		
 		String dataPath = args[0];
@@ -56,14 +59,50 @@ public class PLNetTrainer {
 			throw new IllegalArgumentException("Specified training data file path does not exist.");
 		
 		DyadRankingDataset data = new DyadRankingDataset();
-		BufferedInputStream dataReader = null;		
+		BufferedInputStream dataReader = null;
 		try {
 			dataReader = new BufferedInputStream(new FileInputStream(dataFile));
+			System.out.println("Loading data.");
+			data.deserialize(dataReader);
+			dataReader.close();
+			System.out.println("Data loaded.");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 			return;
+		} catch (IOException e) {
+			e.printStackTrace();
+			return;
 		}
-		data.deserialize(dataReader);
+		
+		if (args.length == 3) {
+			String preprocess = args[2];
+			DyadStandardScaler stdScaler = new DyadStandardScaler();
+			DyadNormalScaler normScaler = new DyadNormalScaler();
+			switch (preprocess.toLowerCase()) {
+				case "standardize":
+					stdScaler.fitTransform(data);
+					break;
+				case "standardizeinstances":
+					stdScaler.fit(data);
+					stdScaler.transformInstances(data);
+					break;
+				case "standardizealternatives":
+					stdScaler.fit(data);
+					stdScaler.transformAlternatives(data);
+					break;
+				case "normalize":
+					normScaler.fitTransform(data);
+					break;
+				case "normalizeinstances":
+					normScaler.fit(data);
+					normScaler.transformInstances(data);
+					break;
+				case "normalizealternatives":
+					normScaler.fit(data);
+					normScaler.transformAlternatives(data);
+					break;			
+			}				
+		}
 		
 		// Train and save model
 		PLNetDyadRanker plNet = new PLNetDyadRanker();
