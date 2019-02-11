@@ -59,22 +59,28 @@ public class PLNetTrainer {
 			throw new IllegalArgumentException("Specified training data file path does not exist.");
 		
 		DyadRankingDataset data = new DyadRankingDataset();
-		BufferedInputStream dataReader = null;
+		FileInputStream dataReader = null;
 		try {
-			dataReader = new BufferedInputStream(new FileInputStream(dataFile));
-			System.out.println("Loading data.");
+			dataReader = new FileInputStream(dataFile);
+			System.out.println("Loading data...");
 			data.deserialize(dataReader);
-			dataReader.close();
 			System.out.println("Data loaded.");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 			return;
-		} catch (IOException e) {
-			e.printStackTrace();
-			return;
+		} finally {
+			if (dataReader != null) {
+				try {
+					dataReader.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+					return;
+				}
+			}
 		}
-		
+
 		if (args.length == 3) {
+			System.out.println("Preprocessing...");
 			String preprocess = args[2];
 			DyadStandardScaler stdScaler = new DyadStandardScaler();
 			DyadNormalScaler normScaler = new DyadNormalScaler();
@@ -101,7 +107,8 @@ public class PLNetTrainer {
 					normScaler.fit(data);
 					normScaler.transformAlternatives(data);
 					break;			
-			}				
+			}			
+			System.out.println("Finished preprocessing");
 		}
 		
 		// Train and save model
