@@ -1,10 +1,15 @@
 package dyadranking.performance;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.regex.Pattern;
@@ -15,18 +20,13 @@ import de.upb.isys.linearalgebra.Vector;
 import dyadranking.sql.SQLUtils;
 import jaicore.basic.SQLAdapter;
 import jaicore.basic.sets.SetUtil.Pair;
-import jaicore.ml.core.exception.PredictionException;
 import jaicore.ml.core.exception.TrainingException;
 import jaicore.ml.dyadranking.Dyad;
-import jaicore.ml.dyadranking.algorithm.ADyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
-import jaicore.ml.dyadranking.algorithm.featuretransform.FeatureTransformPLDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
 import jaicore.ml.dyadranking.dataset.DyadRankingInstance;
 import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.dataset.SparseDyadRankingInstance;
-import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
-import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
 import jaicore.ml.dyadranking.util.DyadStandardScaler;
 
 public class DyadDatasetGenerator {
@@ -40,6 +40,10 @@ public class DyadDatasetGenerator {
 
 	private static final String datasetMetaFeatureTable = "dataset_metafeatures_mirror";
 	private static final Pattern arrayDeserializer = Pattern.compile(" ");
+
+	private static final String DYAD_FILE = "dyad_pool.txt";
+
+	private static List<Pair<Dyad, Double>> dyadsWithScore = new LinkedList<Pair<Dyad, Double>>();
 
 	private enum X_METRIC {
 		X_LANDMARKERS("X_LANDMARKERS"), X_OTHERS("X_OTHERS");
@@ -86,6 +90,38 @@ public class DyadDatasetGenerator {
 		Dyad dyad = new Dyad(new DenseDoubleVector(xArray), new DenseDoubleVector(yArray));
 		return new Pair<Dyad, Double>(dyad, score);
 	}
+	/**
+	 * Gets all dyads and scores from the database.
+	 * 
+	 * @return the list of all dyads with the corresponding score
+	 * @throws SQLException
+	 */
+	private static List<Pair<Dyad, Double>> getAllDyadsAndScores(SQLAdapter adapter) throws SQLException {
+
+		ResultSet res = adapter.getResultsOfQuery(
+				"SELECT " + xMetric + ", y" + ", score FROM " + dyadTable + " NATURAL JOIN " + datasetMetaFeatureTable);
+		res.first();
+		List<Pair<Dyad, Double>> dyadScoreList = new LinkedList<Pair<Dyad, Double>>();
+
+//		ResultSet res_y = adapter.getResultsOfQuery("SELECT y FROM " + dyadTable);
+//		res_y.first();
+
+		while (res.next()) {
+			
+			String serializedX = res.getString(1);
+			String serializedY = res.getString(2);
+			Double score = res.getDouble(3);
+
+			double[] xArray = arrayDeserializer.splitAsStream(serializedX).mapToDouble(Double::parseDouble).toArray();
+			double[] yArray = arrayDeserializer.splitAsStream(serializedY).mapToDouble(Double::parseDouble).toArray();
+			
+			Dyad dyad = new Dyad(new DenseDoubleVector(xArray), new DenseDoubleVector(yArray));
+			dyadScoreList.add(new Pair<Dyad, Double>(dyad, score));
+
+		}
+
+		return dyadScoreList;
+	}
 
 	/**
 	 * Generates a {@link DyadRankingInstance} in the following manner: <code>
@@ -131,14 +167,15 @@ public class DyadDatasetGenerator {
 			SQLAdapter adapter) throws SQLException {
 		// get all indices that have the correct dataset id
 		// count the datasets
-		ResultSet res = adapter.getResultsOfQuery("SELECT COUNT(id) FROM "+dyadTable+" WHERE dataset = " + datasetId);
+		ResultSet res = adapter
+				.getResultsOfQuery("SELECT COUNT(id) FROM " + dyadTable + " WHERE dataset = " + datasetId);
 		res.first();
 		int indicesAmount = res.getInt(1);
 		if (indicesAmount == 0)
 			throw new IllegalArgumentException("No performance samples for for the dataset-id: " + datasetId);
 		int[] dyadIndicesWithDataset = new int[indicesAmount];
 		// collect the indices
-		res = adapter.getResultsOfQuery("SELECT id FROM "+dyadTable+" WHERE dataset = " + datasetId);
+		res = adapter.getResultsOfQuery("SELECT id FROM " + dyadTable + " WHERE dataset = " + datasetId);
 		int counter = 0;
 		while (res.next()) {
 			dyadIndicesWithDataset[counter++] = res.getInt(1);
@@ -164,7 +201,6 @@ public class DyadDatasetGenerator {
 
 	public static DyadRankingDataset getSparseDyadDataset(int seed, int amountOfDyadInstances, int alternativeLength,
 			int[] allowedDatasetsInSplit, SQLAdapter adapter) throws SQLException {
-		
 
 		List<IDyadRankingInstance> sparseDyadRankingInstances = new ArrayList<>();
 		for (int i = 0; i < amountOfDyadInstances; i++) {
@@ -176,8 +212,8 @@ public class DyadDatasetGenerator {
 		return new DyadRankingDataset(sparseDyadRankingInstances);
 	}
 
-	public static DyadRankingDataset getDyadDataset(int seed, int amountOfDyadInstances, int alternativeLength, SQLAdapter adapter)
-			throws SQLException {
+	public static DyadRankingDataset getDyadDataset(int seed, int amountOfDyadInstances, int alternativeLength,
+			SQLAdapter adapter) throws SQLException {
 
 		List<IDyadRankingInstance> sparseDyadRankingInstances = new ArrayList<>();
 		for (int i = 0; i < amountOfDyadInstances; i++) {
@@ -188,26 +224,51 @@ public class DyadDatasetGenerator {
 		return new DyadRankingDataset(sparseDyadRankingInstances);
 	}
 
-	public static void main(String... args) throws SQLException, TrainingException {
+	public static void main(String... args) throws SQLException, TrainingException, IOException {
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		TrainTestDatasetIds split = getTrainTestSplit(0.7d);
-		DyadRankingDataset trainDataset = getSparseDyadDataset(42, 400, 10, split.trainDatasetIds, adapter);
-		DyadRankingDataset testDataset = getSparseDyadDataset(43, 200, 10, split.testDatasetIds, adapter);
+		DyadRankingDataset trainDataset = getSparseDyadDataset(42, 3000, 10, split.trainDatasetIds, adapter);
+	//	DyadRankingDataset testDataset = getSparseDyadDataset(43, 200, 10, split.testDatasetIds, adapter);
 		
 		DyadStandardScaler scaler = new DyadStandardScaler();
 		scaler.fit(trainDataset);
-		scaler.transformInstances(trainDataset);
-		scaler.transformInstances(testDataset);
+		scaler.printMeans();
+		scaler.printStandardDeviations();
+//		scaler.transformInstances(trainDataset);
+//		scaler.transformInstances(testDataset);
 		
-		ADyadRanker ranker = new PLNetDyadRanker();
+		PLNetDyadRanker ranker = new PLNetDyadRanker();
+		System.out.println(ranker.getConfiguration().toString());
 		ranker.train(trainDataset);
+		ranker.saveModelToFile("out");
+//		try {
+//			double loss = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testDataset, ranker);
+//			System.out.println("Average Kendalls Tau: " + loss);
+//		} catch (PredictionException e) {
+//			e.printStackTrace();
+//		}
+		adapter.close();
+	}
+	
+	private static void writeDyadsAndScoresToFile(String filePath, List<Pair<Dyad, Double>> dyadScorePairs) {
+		FileOutputStream out;
 		try {
-			double loss = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testDataset, ranker);
-			System.out.println("Average Kendalls Tau: " + loss);
-		} catch (PredictionException e) {
+			out = new FileOutputStream(new File(DYAD_FILE));
+			for (Pair<Dyad, Double> dyadScorePair : dyadScorePairs) {
+				out.write(dyadScorePair.getX().getInstance().toString().getBytes());
+				out.write(";".getBytes());
+				out.write(dyadScorePair.getX().getAlternative().toString().getBytes());
+				out.write("|".getBytes());
+				out.write(dyadScorePair.getY().toString().getBytes());
+				out.write("\n".getBytes());
+			}
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		adapter.close();
 	}
 
 	private static TrainTestDatasetIds getTrainTestSplit(double ratio) {
