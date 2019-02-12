@@ -2,8 +2,6 @@ package dyadranking.activelearning.experimenter;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
@@ -12,190 +10,140 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import org.apache.commons.io.IOUtils;
-import org.nd4j.linalg.primitives.Pair;
+import org.aeonbits.owner.ConfigCache;
 
-import de.upb.isys.linearalgebra.DenseDoubleVector;
-import de.upb.isys.linearalgebra.Vector;
-import dyadranking.sql.SQLUtils;
 import jaicore.basic.SQLAdapter;
-import jaicore.ml.core.dataset.IInstance;
-import jaicore.ml.dyadranking.Dyad;
+import jaicore.experiments.ExperimentDBEntry;
+import jaicore.experiments.ExperimentRunner;
+import jaicore.experiments.IExperimentIntermediateResultProcessor;
+import jaicore.experiments.IExperimentSetConfig;
+import jaicore.experiments.IExperimentSetEvaluator;
 import jaicore.ml.dyadranking.activelearning.ActiveDyadRanker;
-import jaicore.ml.dyadranking.activelearning.DyadScorePoolProvider;
+import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
-import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
 
 public class ActiveLearningExperimenter {
 
-	private static String DYADS_SCORES_FILE = "./meta-mining-dyads.txt";
-	private static String LEARNING_CURVE_TABLE = "active_ranking_learning_curves";
-
-	private static List<Pair<Dyad, Double>> loadDyadsAndScore(String filePath) {
-		List<Pair<Dyad, Double>> dyadScorePairs = new LinkedList<Pair<Dyad, Double>>();
-		try {
-			FileInputStream in = new FileInputStream(new File(filePath));
-			String input = IOUtils.toString(in, StandardCharsets.UTF_8);
-			String[] rows = input.split("\n");
-			for (String row : rows) {
-				if (row.isEmpty())
-					break;
-				List<Dyad> dyads = new LinkedList<Dyad>();
-				String[] dyadTokens = row.split("\\|");
-				String dyadString = dyadTokens[0];
-				String[] values = dyadString.split(";");
-				if (values[0].length() > 1 && values[1].length() > 1) {
-					String[] instanceValues = values[0].substring(1, values[0].length() - 1).split(",");
-					String[] alternativeValues = values[1].substring(1, values[1].length() - 1).split(",");
-					Vector instance = new DenseDoubleVector(instanceValues.length);
-					for (int i = 0; i < instanceValues.length; i++) {
-						instance.setValue(i, Double.parseDouble(instanceValues[i]));
-					}
-
-					Vector alternative = new DenseDoubleVector(alternativeValues.length);
-					for (int i = 0; i < alternativeValues.length; i++) {
-						alternative.setValue(i, Double.parseDouble(alternativeValues[i]));
-					}
-					Dyad dyad = new Dyad(instance, alternative);
-
-					Double score = Double.parseDouble(dyadTokens[1]);
-
-					dyadScorePairs.add(new Pair<Dyad, Double>(dyad, score));
-				}
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return dyadScorePairs;
-	}
-
 	public static void main(final String[] args) {
+		IActiveLearningConfig m = ConfigCache.getOrCreate(IActiveLearningConfig.class);
+		if (m.getDatasetFolder() == null || !m.getDatasetFolder().exists()) {
+			throw new IllegalArgumentException("config specifies invalid dataset folder " + m.getDatasetFolder());
+		}
 
-		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
-		PLNetDyadRanker ranker = new PLNetDyadRanker();
+		ExperimentRunner runner = new ExperimentRunner(new IExperimentSetEvaluator() {
 
-		for (int seed = 1; seed < 30; seed++) {
-			System.out.println();
-			/* get experiment setup */
-			String poolName = "automl";
-			String samplingStrategy = "prototypical";
-			boolean removeQueriedDyads = true;
-			double trainRatio = 0.7;
-			int numberQueries = 100;
-
-			List<Pair<Dyad, Double>> dyadScorePairs = loadDyadsAndScore(DYADS_SCORES_FILE);
-
-			DyadScorePoolProvider poolProvider = new DyadScorePoolProvider(dyadScorePairs);
-
-			poolProvider.setRemoveDyadsWhenQueried(true);
-			DyadRankingDataset dataset = new DyadRankingDataset();
-			for (Vector vector : poolProvider.getInstanceFeatures()) {
-				dataset.add(poolProvider.getDyadRankingInstanceForInstanceFeatures(vector));
+			@Override
+			public IExperimentSetConfig getConfig() {
+				return m;
 			}
 
-			Collections.shuffle(dataset, new Random(seed));
+			@Override
+			public void evaluate(final ExperimentDBEntry experimentEntry, final SQLAdapter adapter,
+					final IExperimentIntermediateResultProcessor processor) throws Exception {
 
-			DyadRankingDataset trainData = new DyadRankingDataset(
-					dataset.subList(0, (int) (trainRatio * dataset.size())));
-			DyadRankingDataset testData = new DyadRankingDataset(
-					dataset.subList((int) (trainRatio * dataset.size()), dataset.size()));
+				/* get experiment setup */
+				Map<String, String> description = experimentEntry.getExperiment().getValuesOfKeyFields();
+				int seed = Integer.parseInt(description.get("seed"));
+				String datasetName = description.get(IActiveLearningConfig.DATASETS);
+				int minibatchSize = Integer.parseInt(description.get("minibatch_size"));
+				double ratioOfOldInstancesInMinibatch = Double
+						.parseDouble(description.get("minibatch_ratio_of_old_instance"));
+				boolean removeQueriedDyadsFromPool = Boolean.parseBoolean(description.get("remove_queried_dyad"));
+				int numberQueries = Integer.parseInt(description.get("number_queries"));
+				String samplingStrategy = description.get("sampling_strategie");
+				double trainRatio = Double.parseDouble(description.get("train_ratio"));
+				int lengthOfTopRankingToConsider = Integer.parseInt(description.get("length_of_top_ranking"));
+				String curveTable = m.getLearningCurveTableName();
 
-			System.out.println("size before: " + poolProvider.getInstanceFeatures().size());
+				/* initialize learning curve table if not existent */
+				try {
+					ResultSet rs = adapter.getResultsOfQuery("SHOW TABLES");
+					boolean hasPerformanceTable = false;
+					while (rs.next()) {
+						String tableName = rs.getString(1);
+						if (tableName.equals(curveTable))
+							hasPerformanceTable = true;
+					}
 
-			System.out.println("train data: ");
-			for (IInstance instance : trainData) {
-				IDyadRankingInstance drInstance = (IDyadRankingInstance) instance;
-				System.out.println(drInstance.getDyadAtPosition(0).getInstance());
+					if (!hasPerformanceTable) {
+						adapter.update("CREATE TABLE `" + curveTable + "` (\r\n"
+								+ " `evaluation_id` int(10) NOT NULL AUTO_INCREMENT,\r\n" + " `seed` json NOT NULL,\r\n"
+								+ " `query_step` int NOT NULL,\r\n" + "`sampling_strategy` varchar(200) NOT NULL,\r\n"
+								+ " `train_ratio` double NOT NULL,\r\n"
+								+ " `old_data_in_minibatch_ratio` double NOT NULL,\r\n"
+								+ " `minibatch_size` int NOT NULL,\r\n" + " `dataset` varchar(200) NOT NULL,\r\n"
+								+ " `remove_queried_dyads` bit ,\r\n" + " `measure` varchar(200) NOT NULL,\r\n"
+								+ " `score` double NOT NULL,\r\n" + "`evaluation_date` timestamp NULL DEFAULT NULL,"
+								+ " PRIMARY KEY (`evaluation_id`)\r\n"
+								+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
+								new ArrayList<>());
+					}
 
-			}
-
-			System.out.println("test data: ");
-			for (IInstance instance : testData) {
-				IDyadRankingInstance drInstance = (IDyadRankingInstance) instance;
-				System.out.println(drInstance.getDyadAtPosition(0).getInstance());
-			}
-
-			for (IInstance instance : testData) {
-				IDyadRankingInstance drInstance = (IDyadRankingInstance) instance;
-
-				poolProvider.removeDyadsFromPoolByInstances(drInstance.getDyadAtPosition(0).getInstance());
-
-			}
-
-			System.out.println("size after: " + poolProvider.getInstanceFeatures().size());
-
-//				ActiveDyadRanker activeRanker = new PrototypicalPoolBasedActiveDyadRanker(ranker, poolProvider);
-			ActiveDyadRanker activeDyadRanker;
-			if (samplingStrategy.equals("random"))
-				activeDyadRanker = new RandomPoolBasedActiveDyadRanker(ranker, poolProvider, seed);
-			else
-				activeDyadRanker = new PrototypicalPoolBasedActiveDyadRanker(ranker, poolProvider);
-
-			/* initialize tables if not existent */
-//			try {
-//				ResultSet rs = adapter.getResultsOfQuery("SHOW TABLES");
-//				boolean hasPerformanceTable = false;
-//				while (rs.next()) {
-//					String tableName = rs.getString(1);
-//					System.out.println(tableName);
-//					if (tableName.equals(LEARNING_CURVE_TABLE)) {
-//						hasPerformanceTable = true;
-//						System.out.println("table already there");
-//					}
-//				}
-//
-//				// if there is no performance table, create it. we hash the composition and
-//				// trajectory and use the hash value as primary key for performance reasons.
-//				if (!hasPerformanceTable) {
-//					System.out.println("creating table");
-//					adapter.update("CREATE TABLE `" + LEARNING_CURVE_TABLE + "` (\r\n"
-//							+ " `evaluation_id` int(10) NOT NULL AUTO_INCREMENT,\r\n"
-//							+ " `sampling_strat` VARCHAR(30),\r\n" + " `query` int(10) NOT NULL,\r\n"
-//							+ " `seed` int(10) NOT NULL,\r\n" + " `kendall_tau` double NOT NULL,\r\n"
-//							+ " `pool` VARCHAR(30) NOT NULL,\r\n" + "`evaluation_date` timestamp NULL DEFAULT NULL,"
-//							+ " PRIMARY KEY (`evaluation_id`)\r\n"
-//							+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
-//							new ArrayList<>());
-//				}
-//
-//			} catch (SQLException e) {
-//				e.printStackTrace();
-//			}
-
-			try {
-
-				// train the ranker
-				for (int i = 0; i < 100; i++) {
-					activeDyadRanker.activelyTrain(1);
-					double avgKendallTau = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(),
-							testData, ranker);
-					System.out.print(avgKendallTau + ",");
-//						Map<String, String> valueMap = new HashMap<>();
-//						valueMap.put("sampling_strat", samplingStrategy);
-//						valueMap.put("query", ""+i);
-//						valueMap.put("seed", ""+seed);
-//						valueMap.put("kendall_tau", ""+avgKendallTau);
-//						valueMap.put("pool", poolName);
-//						valueMap.put("evaluation_date",
-//								new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date.from(Instant.now())));
-//						adapter.insert(LEARNING_CURVE_TABLE, valueMap);
+				} catch (SQLException e) {
+					e.printStackTrace();
 				}
 
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+				DyadRankingDataset dataset = new DyadRankingDataset();
+				dataset.deserialize(new FileInputStream(new File(m.getDatasetFolder() + datasetName)));
+				Collections.shuffle(dataset, new Random(seed));
+				DyadRankingDataset trainData = new DyadRankingDataset(
+						dataset.subList(0, (int) (dataset.size() * trainRatio)));
+				DyadRankingDataset testData = new DyadRankingDataset(
+						dataset.subList((int) (dataset.size() * trainRatio), dataset.size()));
+				DyadDatasetPoolProvider poolProvider = new DyadDatasetPoolProvider(trainData);
+				poolProvider.setRemoveDyadsWhenQueried(removeQueriedDyadsFromPool);
+				PLNetDyadRanker plNet = new PLNetDyadRanker();
+				ActiveDyadRanker activeRanker = null;
+				if (samplingStrategy.equals("prototypical")) {
+					activeRanker = new PrototypicalPoolBasedActiveDyadRanker(plNet, poolProvider, minibatchSize,
+							lengthOfTopRankingToConsider, ratioOfOldInstancesInMinibatch);
+				} else if (samplingStrategy.equals("random")) {
+					activeRanker = new RandomPoolBasedActiveDyadRanker(plNet, poolProvider, minibatchSize, seed);
+				} else {
+					throw new IllegalArgumentException("Please choose a valid sampling strategy!");
+				}
 
-		}
+				double currentScore = 0;
+				
+				for (int iteration = 0; iteration < numberQueries; iteration++) {
+					activeRanker.activelyTrain(1);
+					currentScore = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData, plNet);
+				
+					Map<String, String> valueMap = new HashMap<>();
+					valueMap.put("seed", compositionString);
+					valueMap.put("query_step", trainTrajectoryString);
+					valueMap.put("sampling_strategy", testTrajectoryString);
+					valueMap.put("train_ratio", className);
+					valueMap.put("evaluation_date",
+							new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date.from(Instant.now())));
+					valueMap.put("old_data_in_minibatch_ratio", Long.toString(evaluationTime));
+					valueMap.put("minibatch_size", hexHash);
+					valueMap.put("minibatch_size", hexHash);
+					valueMap.put("minibatch_size", hexHash);
+					valueMap.put("score", Double.toString(score));
+					this.sqlAdapter.insert(this.performanceSampleTableName, valueMap);
+				
+				
+				}
+
+				/* run experiment */
+				Map<String, Object> results = new HashMap<>();
+
+				/* report results */
+				results.put("measure", "Kendalls Tau");
+				results.put("score", currentScore);
+				processor.processResults(results);
+			}
+		});
+		runner.randomlyConductExperiments(true);
 	}
 
 }
