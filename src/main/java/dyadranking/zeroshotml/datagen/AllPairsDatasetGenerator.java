@@ -27,24 +27,32 @@ public class AllPairsDatasetGenerator {
 	
 	private static final int SEED = 1;
 	
-	private static final String outputPath = "datasets/zeroshot/SMORBFtrain.dr";
+	private static final String outputPath = "datasets/zeroshot/J48test.dr";
 	
-	private static final int NUM_FEATURES = 3;
+	private static final int NUM_FEATURES = 2;
+	
+	private static final String PERF_SAMPLE_TABLE = "`j48_performance_samples`";
+	
+	private static final String DATASET_METAFEAT_TABLE = "`dataset_metafeatures_mirror`";
 	
 	private static final String J48_HYPERPARS = "C_pruning_confidence, M_min_inst";
 	
 	private static final String SMORBF_HYPERPARS = "C_complexity_const_exp, L_tolerance_exp, RBF_gamma_exp";
 	
-	private static final int[] datasets = { 12, 14, 16, 18, 20, 21, 22, 23, 24, 26, 28, 3, 30, 32 };
+	private static final int[] DATASETS_TRAIN = { 12, 14, 16, 18, 20, 21, 22, 23, 24, 26, 28, 3, 30, 32 };
 	
-	//private static final String datasetMetaFeatureTable = "dataset_metafeatures_mirror";
+	private static final int[] DATASETS_TEST = { 5, 6, 36, 38, 44, 46 };
 	
 	private static final Pattern arrayDeserializer = Pattern.compile(" ");
+
+	private static final double SAME_PERF_TOLERANCE = Math.pow(10,-5);
+
+	private static final boolean EXCLUDE_SAME_PERF = true;
 	
 	public static List<Pair<double[], Double>> getSamplesForDataset(SQLAdapter adapter, int dataset) throws SQLException {
 		ResultSet res = adapter.getResultsOfQuery(
-				"SELECT " + SMORBF_HYPERPARS + ", performance "
-				+ "FROM `smorbf_performance_samples`"
+				"SELECT " + J48_HYPERPARS + ", performance "
+				+ "FROM " + PERF_SAMPLE_TABLE
 				+ "WHERE dataset = " + dataset);
 		
 		res.first();
@@ -66,7 +74,7 @@ public class AllPairsDatasetGenerator {
 	
 	public static double[] getDatasetLandmarkers(SQLAdapter adapter, int dataset) throws SQLException {
 		ResultSet res = adapter.getResultsOfQuery(
-				"SELECT X_LANDMARKERS FROM dataset_metafeatures_mirror WHERE dataset = " + dataset );
+				"SELECT X_LANDMARKERS FROM " + DATASET_METAFEAT_TABLE + " WHERE dataset = " + dataset );
 		
 		res.first();	
 		String serializedY = res.getString(1);
@@ -89,7 +97,7 @@ public class AllPairsDatasetGenerator {
 		
 		DyadRankingDataset data = new DyadRankingDataset();
 		
-		for (int dataset : datasets) {
+		for (int dataset : DATASETS_TEST) {
 			Vector landmarkers = new DenseDoubleVector(getDatasetLandmarkers(adapter, dataset));
 			List<Pair<double[], Double>> samples = getSamplesForDataset(adapter, dataset);
 			int samplesLen = samples.size();
@@ -98,11 +106,14 @@ public class AllPairsDatasetGenerator {
 					List<Pair<double[], Double>> alternatives = new ArrayList<Pair<double[], Double>>(2);
 					alternatives.add(samples.get(i));
 					alternatives.add(samples.get(j));
-					Collections.sort(alternatives, new PerformanceComparator());
-					data.add(new SparseDyadRankingInstance(landmarkers, 
+					if(EXCLUDE_SAME_PERF 
+					   && Math.abs(samples.get(i).getRight() - samples.get(j).getRight()) >= SAME_PERF_TOLERANCE) {
+						Collections.sort(alternatives, new PerformanceComparator());
+						data.add(new SparseDyadRankingInstance(landmarkers, 
 							alternatives.stream()
 							.map((Pair<double[], Double> p) -> new DenseDoubleVector(p.getLeft()))
 							.collect(Collectors.toList())));
+					}
 				}
 			}
 		}
