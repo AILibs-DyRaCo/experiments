@@ -27,11 +27,11 @@ public class AllPairsDatasetGenerator {
 	
 	private static final int SEED = 1;
 	
-	private static final String outputPath = "datasets/zeroshot/J48test.dr";
+	private static final String outputPath = "datasets/zeroshot/SMORBFtrain.dr";
 	
-	private static final int NUM_FEATURES = 2;
+	private static final int NUM_FEATURES = 3;
 	
-	private static final String PERF_SAMPLE_TABLE = "`j48_performance_samples`";
+	private static final String PERF_SAMPLE_TABLE = "`smorbf_performance_samples`";
 	
 	private static final String DATASET_METAFEAT_TABLE = "`dataset_metafeatures_mirror`";
 	
@@ -48,10 +48,12 @@ public class AllPairsDatasetGenerator {
 	private static final double SAME_PERF_TOLERANCE = Math.pow(10,-5);
 
 	private static final boolean EXCLUDE_SAME_PERF = true;
+
+	private static final boolean TEST = false;
 	
 	public static List<Pair<double[], Double>> getSamplesForDataset(SQLAdapter adapter, int dataset) throws SQLException {
 		ResultSet res = adapter.getResultsOfQuery(
-				"SELECT " + J48_HYPERPARS + ", performance "
+				"SELECT " + SMORBF_HYPERPARS + ", performance "
 				+ "FROM " + PERF_SAMPLE_TABLE
 				+ "WHERE dataset = " + dataset);
 		
@@ -97,12 +99,17 @@ public class AllPairsDatasetGenerator {
 		
 		DyadRankingDataset data = new DyadRankingDataset();
 		
-		for (int dataset : DATASETS_TEST) {
+		int[] datasets = DATASETS_TRAIN;
+		if (TEST)
+			datasets = DATASETS_TEST;
+
+		
+		for (int dataset : datasets) {
 			Vector landmarkers = new DenseDoubleVector(getDatasetLandmarkers(adapter, dataset));
 			List<Pair<double[], Double>> samples = getSamplesForDataset(adapter, dataset);
 			int samplesLen = samples.size();
 			for (int i = 0; i < samplesLen - 1; i++) {
-				for (int j = 1; j < samplesLen; j++) {
+				for (int j = i; j < samplesLen; j++) {
 					List<Pair<double[], Double>> alternatives = new ArrayList<Pair<double[], Double>>(2);
 					alternatives.add(samples.get(i));
 					alternatives.add(samples.get(j));

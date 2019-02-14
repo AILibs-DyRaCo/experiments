@@ -87,12 +87,9 @@ public class RFPerformanceSampler {
 								+ datasetIdMap.get(dataset)))));
 				data.setClassIndex(data.numAttributes() - 1);
 				
-				String P_bag_size_option = "-P " + description.get("P_bag_size");
 				String I_iteration_option = " -I " + description.get("I_iterations");
 				String M_num_instances_option = " -M " + description.get("M_num_instances");
-				String V_min_var_option = " -V " + Math.exp(Integer.parseInt(description.get("V_min_var_exp")));
-				String depth_option = " -depth " + description.get("depth");
-				String N_backfitting_folds_option = " -N "  + description.get("N_backfitting_folds");				
+				String depth_option = " -depth " + description.get("depth");				
 				int K_num_attributes = (int) Math.ceil(data.numAttributes() * Double.parseDouble(description.get("K_fraction_attributes")));
 				String K_option = " -K " + K_num_attributes;
 				
@@ -102,13 +99,10 @@ public class RFPerformanceSampler {
 				
 				RandomForest rf = new RandomForest();
 				String options = 
-						P_bag_size_option +
 						I_iteration_option +
 						K_option +
 						M_num_instances_option +
-						V_min_var_option +
-						depth_option +
-						N_backfitting_folds_option;
+						depth_option;
 				String[] optionsSplit = Utils.splitOptions(options);
 				rf.setOptions(optionsSplit);
 				
