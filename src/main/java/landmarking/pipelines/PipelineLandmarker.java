@@ -60,9 +60,7 @@ public class PipelineLandmarker {
 				rs.first();
 				compositionString = rs.getString(1);
 
-				File jsonFile = Paths.get(getClass().getClassLoader()
-						.getResource(Paths.get("automl", "searchmodels", "weka", "weka-all-autoweka.json").toString())
-						.toURI()).toFile();
+				File jsonFile = new File("./conf/automl/searchmodels/weka/weka-all-autoweka.json");
 
 				ComponentLoader loader = new ComponentLoader(jsonFile);
 				ObjectMapper mapper = new ObjectMapper();
