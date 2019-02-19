@@ -1,15 +1,20 @@
 package landmarking.pipelines;
 
+import java.io.File;
+import java.nio.file.Paths;
+import java.sql.ResultSet;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.aeonbits.owner.ConfigCache;
 
-import de.upb.crc901.mlplan.multiclass.wekamlplan.MLPlanWekaClassifier;
-import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WekaMLPlanWekaClassifier;
-import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WekaMLPlanWekaUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WEKAPipelineFactory;
 import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.model.MLPipeline;
+import hasco.model.ComponentInstance;
+import hasco.serialization.ComponentLoader;
+import hasco.serialization.HASCOJacksonModule;
 import jaicore.basic.SQLAdapter;
 import jaicore.experiments.ExperimentDBEntry;
 import jaicore.experiments.ExperimentRunner;
@@ -20,8 +25,6 @@ import jaicore.ml.core.evaluation.measure.singlelabel.ZeroOneLoss;
 import jaicore.ml.evaluation.evaluators.weka.MonteCarloCrossValidationEvaluator;
 import jaicore.ml.evaluation.evaluators.weka.SimpleEvaluatorMeasureBridge;
 import jaicore.ml.openml.OpenMLHelper;
-import jaicore.search.core.interfaces.GraphGenerator;
-import jaicore.search.structure.graphgenerator.SingleRootGenerator;
 import weka.core.Instances;
 
 public class PipelineLandmarker {
@@ -42,6 +45,7 @@ public class PipelineLandmarker {
 				/* get experiment setup */
 				Map<String, String> description = experimentEntry.getExperiment().getValuesOfKeyFields();
 				String datasetID = description.get("dataset_id");
+				String pipelineID = description.get("pipeline_id");
 				String openMLKey = description.get("openMLKey");
 				int mccvRepeats = Integer.parseInt(description.get("mccvRepeats"));
 				int mccvSeed = Integer.parseInt(description.get("mccvSeed"));
@@ -50,31 +54,37 @@ public class PipelineLandmarker {
 				OpenMLHelper.setApiKey(openMLKey);
 				Instances data = OpenMLHelper.getInstancesById(Integer.parseInt(datasetID));
 				data.setClassIndex(data.numAttributes() - 1);
-				
-				MLPlanWekaClassifier mlplan = new WekaMLPlanWekaClassifier();
-				mlplan.setData(data);
-				
-				GraphGenerator gg = mlplan.getGraphGenerator();
-				SingleRootGenerator srg = (SingleRootGenerator<T>)
-				
-				List<MLPipeline> allPipelines = WekaMLPlanWekaUtil.getAllLegalWekaPipelinesWithDefaultConfig();
+				String compositionString = "";
+				ResultSet rs = adapter
+						.getResultsOfQuery("SELECT composition FROM draco_pipelines WHERE pipeline_id = " + pipelineID);
+				rs.first();
+				compositionString = rs.getString(1);
 
+				File jsonFile = Paths.get(getClass().getClassLoader()
+						.getResource(Paths.get("automl", "searchmodels", "weka", "weka-all-autoweka.json").toString())
+						.toURI()).toFile();
+
+				ComponentLoader loader = new ComponentLoader(jsonFile);
+				ObjectMapper mapper = new ObjectMapper();
+				mapper.registerModule(new HASCOJacksonModule(loader.getComponents()));
+
+				ComponentInstance composition = mapper.readValue(compositionString, ComponentInstance.class);
+				System.out.println(composition);
+				WEKAPipelineFactory factory = new WEKAPipelineFactory();
+				MLPipeline pipeline = factory.getComponentInstantiation(composition);
 				MonteCarloCrossValidationEvaluator evaluator = new MonteCarloCrossValidationEvaluator(
 						new SimpleEvaluatorMeasureBridge(new ZeroOneLoss()), mccvRepeats, data, mccvTrainRatio,
 						mccvSeed);
-				for (MLPipeline pipeline : allPipelines) {
-					double loss = evaluator.evaluate(pipeline);
-				}
-
+				double loss = evaluator.evaluate(pipeline);
 				/* run experiment */
 				Map<String, Object> results = new HashMap<>();
 
 				/* report results */
-//				results.put("loss", loss);
-//				processor.processResults(results);
+				results.put("loss", loss);
+				processor.processResults(results);
 			}
 		});
-//		runner.randomlyConductExperiments(true);
+		runner.randomlyConductExperiments(true);
 	}
 
 }

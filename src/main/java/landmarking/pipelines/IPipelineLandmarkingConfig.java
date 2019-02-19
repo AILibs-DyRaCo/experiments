@@ -9,16 +9,9 @@ import org.aeonbits.owner.Config.Sources;
 import jaicore.experiments.IExperimentSetConfig;
 
 /**
- * In fact, this config is an exact copy of IMultiClassClassificationExperimentConfig,
- * which cannot be used here to avoid cyclic dependencies.
- * Typically, in this case, you just would extend IMultiClassClassificationExperimentConfig
- * and leave the interface (mostly) empty except that you define the URL for the file.
- * 
- * 
- * @author fmohr
- *
+ * Config for pipeline landmarking.
  */
-@Sources({ "file:./examples/mlexample/setup.properties" })
+@Sources({ "file:./setup.properties" })
 public interface IPipelineLandmarkingConfig extends IExperimentSetConfig {
 	
 	/**
@@ -46,8 +39,13 @@ public interface IPipelineLandmarkingConfig extends IExperimentSetConfig {
 	 */
 	public static final String DATASETS_IDS = "dataset_ids";
 	
+	/**
+	 * Pipeline IDs from our database.
+	 */
+	public static final String PIPELINE_IDS = "pipeline_ids";
+	
 	@Key(K_MCCV_REPEATS)
-	@DefaultValue("10")
+	@DefaultValue("5")
 	public int getNumberMCCVRepeats();
 
 	@Key(K_MCCV_SEED)
@@ -58,14 +56,13 @@ public interface IPipelineLandmarkingConfig extends IExperimentSetConfig {
 	@DefaultValue("0.7d")
 	public double getMCCVTrainRatio();
 
-	@Key(K_RANDOM_SEARCH_SEED)
-	@DefaultValue("1")
-	public int getRandomSearchSeed();
-	
 	@Key(K_OPENML_KEY)
 	public String getOpenMLKey();
 
 	@Key(DATASETS_IDS)
 	public List<String> getDatasetIDs();
+
+	@Key(PIPELINE_IDS)
+	public List<String> getPipelineIDs();
 
 }
