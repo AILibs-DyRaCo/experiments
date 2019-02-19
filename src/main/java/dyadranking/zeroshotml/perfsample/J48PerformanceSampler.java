@@ -17,8 +17,6 @@ import jaicore.experiments.IExperimentSetConfig;
 import jaicore.experiments.IExperimentSetEvaluator;
 import jaicore.ml.WekaUtil;
 import weka.classifiers.Evaluation;
-import weka.classifiers.functions.SMO;
-import weka.classifiers.functions.supportVector.RBFKernel;
 import weka.classifiers.trees.J48;
 import weka.core.Instances;
 import weka.core.Utils;

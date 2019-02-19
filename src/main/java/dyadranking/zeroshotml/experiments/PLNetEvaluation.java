@@ -13,9 +13,9 @@ import jaicore.ml.dyadranking.util.DyadNormalScaler;
 
 public class PLNetEvaluation {
 	
-	private static final String TEST_DATA = "datasets/zeroshot/J48test.dr";
+	private static final String TEST_DATA = "datasets/zeroshot/SMORBFtest.dr";
 	
-	private static final String PLNET = "datasets/zeroshot/J48PLNet.plnet.zip";
+	private static final String PLNET = "datasets/zeroshot/SMORBFPLNet.plnet.zip";
 	
 	public static void main(String[] args) throws IOException, PredictionException {
 		

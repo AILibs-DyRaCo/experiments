@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -26,24 +27,28 @@ import jaicore.ml.dyadranking.zeroshot.inputoptimization.PLNetInputOptimizer;
 import jaicore.ml.dyadranking.zeroshot.util.InputOptListener;
 import jaicore.ml.dyadranking.zeroshot.util.ZeroShotUtil;
 import weka.classifiers.Evaluation;
+import weka.classifiers.functions.SMO;
 import weka.classifiers.trees.J48;
+import weka.classifiers.trees.RandomForest;
 import weka.core.Instances;
 
 public class ZeroShotCurvesExperiment {
 	
-	private static final String DATA_PATH = "datasets/zeroshot/J48train.dr";
+	private static final String DATA_PATH = "datasets/zeroshot/RFtrain.dr";
 	
-	private static final String PLNET_PATH = "datasets/zeroshot/J48PLNet.plnet.zip";
+	private static final String PLNET_PATH = "datasets/zeroshot/RF.plnet.zip";
 	
 	private static final String EVAL_DATA_PATH = "datasets/test";
+	
+	private static final String OUTPUT_PATH = "datasets/zeroshot/eval/rf";
 	
 	private static final String DATASET_METAFEAT_TABLE = "`dataset_metafeatures_mirror`";
 	
 	private static final int[] DATASETS_TEST = { 5, 6, 36, 38, 44, 46 };
 	
-	private static final int NUM_HYPERPARS = 2;
+	private static final int NUM_HYPERPARS = 4;
 
-	private static final double LEARNING_RATE = 0.0005;
+	private static final double LEARNING_RATE = 0.001;
 
 	private static final int NUM_ITERATIONS = 200;
 	
@@ -102,10 +107,10 @@ public class ZeroShotCurvesExperiment {
 		
 		// Undo normalization
 		C *= scaler.getStatsY()[0].getMax() - scaler.getStatsY()[0].getMin();
-		C += scaler.getStatsY()[0].getMin();
-		
+		C += scaler.getStatsY()[0].getMin();		
 		M *= scaler.getStatsY()[1].getMax() - scaler.getStatsY()[1].getMin();
 		M += scaler.getStatsY()[1].getMin();
+		
 		try {
 			j48.setOptions(ZeroShotUtil.mapJ48InputsToWekaOptions(C, M));
 		} catch (Exception e) {
@@ -123,7 +128,80 @@ public class ZeroShotCurvesExperiment {
 		return score;
 	}
 	
-	public static void main(String[] args) throws SQLException {
+	public static double evaluateSMO(INDArray hyperPars, Instances data, DyadNormalScaler scaler) {
+		SMO smo = new SMO();
+		double score = 0.0;
+		
+		double CExp = hyperPars.getDouble(0);
+		double LExp = hyperPars.getDouble(1);
+		double RBFGammaExp = hyperPars.getDouble(2);
+		
+		// Undo normalization
+		CExp *= scaler.getStatsY()[0].getMax() - scaler.getStatsY()[0].getMin();
+		CExp += scaler.getStatsY()[0].getMin();		
+		LExp *= scaler.getStatsY()[1].getMax() - scaler.getStatsY()[1].getMin();
+		LExp += scaler.getStatsY()[1].getMin();		
+		RBFGammaExp *= scaler.getStatsY()[2].getMax() - scaler.getStatsY()[2].getMin();
+		RBFGammaExp += scaler.getStatsY()[2].getMin();
+		
+		try {
+			smo.setOptions(ZeroShotUtil.mapSMORBFInputsToWekaOptions(CExp, LExp, RBFGammaExp));
+		} catch (Exception e) {
+			// Invalid parameters
+			e.printStackTrace();
+			return 0.0;
+		}
+		try {
+			Evaluation eval = new Evaluation(data);
+			eval.crossValidateModel(smo, data, 5, new Random(SEED));
+			score = eval.pctCorrect();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return 0.0;
+		}
+		
+		return score;
+	}
+	
+	public static double evaluateRF(INDArray hyperPars, Instances data, DyadNormalScaler scaler) {
+		RandomForest rf = new RandomForest();
+		double score = 0.0;
+		
+		double I = hyperPars.getDouble(0);
+		double K_fraction = hyperPars.getDouble(1);
+		double M = hyperPars.getDouble(2);
+		double depth = hyperPars.getDouble(3);
+		
+		// Undo normalization
+		I *= scaler.getStatsY()[0].getMax() - scaler.getStatsY()[0].getMin();
+		I += scaler.getStatsY()[0].getMin();		
+		K_fraction *= scaler.getStatsY()[1].getMax() - scaler.getStatsY()[1].getMin();
+		K_fraction += scaler.getStatsY()[1].getMin();		
+		M *= scaler.getStatsY()[2].getMax() - scaler.getStatsY()[2].getMin();
+		M += scaler.getStatsY()[2].getMin();
+		depth *= scaler.getStatsY()[3].getMax() - scaler.getStatsY()[3].getMin();
+		depth += scaler.getStatsY()[3].getMin();
+		
+		try {
+			rf.setOptions(ZeroShotUtil.mapRFInputsToWekaOptions(I, K_fraction, M, depth, data.numAttributes()));
+		} catch (Exception e) {
+			// Invalid parameters
+			e.printStackTrace();
+			return 0.0;
+		}
+		try {
+			Evaluation eval = new Evaluation(data);
+			eval.crossValidateModel(rf, data, 5, new Random(SEED));
+			score = eval.pctCorrect();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return 0.0;
+		}
+		
+		return score;
+	}
+	
+	public static void main(String[] args) throws SQLException, IOException {
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		File drDataFile = new File(DATA_PATH);
 		DyadRankingDataset data = new DyadRankingDataset();
@@ -150,10 +228,16 @@ public class ZeroShotCurvesExperiment {
 		for(int dataset : DATASETS_TEST) {
 			System.out.println("Evaluating data set: " + dataset);
 			
+			File outputFile = new File(OUTPUT_PATH + dataset);
+			if (!outputFile.exists()) {
+				outputFile.createNewFile();
+			}
+			PrintWriter outStream = new PrintWriter(outputFile);
+			
 			double[] datasetFeatures = getDatasetLandmarkers(adapter, dataset);
 			INDArray dsFeat = Nd4j.create(datasetFeatures);
 			INDArray initHyperPars = Nd4j.create(getInitialHyperPars(NUM_HYPERPARS));
-			INDArray inputMask = Nd4j.hstack(Nd4j.zeros(dsFeat.columns()), Nd4j.create(new double[]{1.0, 1.0}));			
+			INDArray inputMask = Nd4j.hstack(Nd4j.zeros(dsFeat.columns()), Nd4j.ones(NUM_HYPERPARS));			
 			INDArray init = Nd4j.hstack(dsFeat, initHyperPars);
 			
 			int[] indicesToWatch = new int[NUM_HYPERPARS];
@@ -174,9 +258,11 @@ public class ZeroShotCurvesExperiment {
 								+ datasetIdMap.get(dataset + "")))));
 				evalData.setClassIndex(evalData.numAttributes() - 1);
 				for (INDArray inp : listener.getInputList()) {
-					System.out.print(evaluateJ48(inp, evalData, scaler) + ",");
+					double score = evaluateRF(inp, evalData, scaler);
+					System.out.print(score + ",");
+					outStream.print(score + ",");
 				}
-				System.out.println();
+				outStream.println();
 			} catch (FileNotFoundException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -185,9 +271,10 @@ public class ZeroShotCurvesExperiment {
 				e.printStackTrace();
 			}
 			for (double output : listener.getOutputList()) {
-				System.out.print(output + ",");
+				outStream.print(output + ",");
 			}
-			System.out.println();
+			outStream.println();
+			outStream.close();
 		}
 	}
 	

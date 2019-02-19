@@ -25,19 +25,29 @@ import jaicore.ml.dyadranking.dataset.SparseDyadRankingInstance;
 
 public class AllPairsDatasetGenerator {
 	
+	private static final String J48_HYPERPARS = "C_pruning_confidence, M_min_inst";
+	
+	private static final String SMORBF_HYPERPARS = "C_complexity_const_exp, L_tolerance_exp, RBF_gamma_exp";
+	
+	private static final String RF_HYPERPARS = "I_iterations, K_fraction_attributes, M_num_instances, depth";
+	
 	private static final int SEED = 1;
 	
-	private static final String outputPath = "datasets/zeroshot/SMORBFtrain.dr";
+	private static final String outputPath = "datasets/zeroshot/SMORBFtest.dr";
 	
 	private static final int NUM_FEATURES = 3;
+	
+	private static final double SAME_PERF_TOLERANCE = Math.pow(10,-5);
+
+	private static final boolean EXCLUDE_SAME_PERF = true;
+
+	private static final boolean TEST = true;
+	
+	private static final String HYPERPARS = SMORBF_HYPERPARS;
 	
 	private static final String PERF_SAMPLE_TABLE = "`smorbf_performance_samples`";
 	
 	private static final String DATASET_METAFEAT_TABLE = "`dataset_metafeatures_mirror`";
-	
-	private static final String J48_HYPERPARS = "C_pruning_confidence, M_min_inst";
-	
-	private static final String SMORBF_HYPERPARS = "C_complexity_const_exp, L_tolerance_exp, RBF_gamma_exp";
 	
 	private static final int[] DATASETS_TRAIN = { 12, 14, 16, 18, 20, 21, 22, 23, 24, 26, 28, 3, 30, 32 };
 	
@@ -45,15 +55,10 @@ public class AllPairsDatasetGenerator {
 	
 	private static final Pattern arrayDeserializer = Pattern.compile(" ");
 
-	private static final double SAME_PERF_TOLERANCE = Math.pow(10,-5);
-
-	private static final boolean EXCLUDE_SAME_PERF = true;
-
-	private static final boolean TEST = false;
 	
 	public static List<Pair<double[], Double>> getSamplesForDataset(SQLAdapter adapter, int dataset) throws SQLException {
 		ResultSet res = adapter.getResultsOfQuery(
-				"SELECT " + SMORBF_HYPERPARS + ", performance "
+				"SELECT " + HYPERPARS + ", performance "
 				+ "FROM " + PERF_SAMPLE_TABLE
 				+ "WHERE dataset = " + dataset);
 		
