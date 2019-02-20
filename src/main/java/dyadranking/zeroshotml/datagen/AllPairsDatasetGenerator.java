@@ -31,9 +31,11 @@ public class AllPairsDatasetGenerator {
 	
 	private static final String RF_HYPERPARS = "I_iterations, K_fraction_attributes, M_num_instances, depth";
 	
+	private static final String MLP_HYPERPARS = "L_learning_rate_exp, M_momentum_exp, N_num_epochs";
+	
 	private static final int SEED = 1;
 	
-	private static final String outputPath = "datasets/zeroshot/SMORBFtest.dr";
+	private static final String outputPath = "datasets/zeroshot/MLPtrain.dr";
 	
 	private static final int NUM_FEATURES = 3;
 	
@@ -41,11 +43,11 @@ public class AllPairsDatasetGenerator {
 
 	private static final boolean EXCLUDE_SAME_PERF = true;
 
-	private static final boolean TEST = true;
+	private static final boolean TEST = false;
 	
-	private static final String HYPERPARS = SMORBF_HYPERPARS;
+	private static final String HYPERPARS = MLP_HYPERPARS;
 	
-	private static final String PERF_SAMPLE_TABLE = "`smorbf_performance_samples`";
+	private static final String PERF_SAMPLE_TABLE = "`mlp_performance_samples`";
 	
 	private static final String DATASET_METAFEAT_TABLE = "`dataset_metafeatures_mirror`";
 	
