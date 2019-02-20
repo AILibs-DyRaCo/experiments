@@ -96,12 +96,14 @@ public class PipelineEnumarator {
 
 		try {
 			WekaMLPlanWekaClassifier mlplan = new WekaMLPlanWekaClassifier();
-			Collection<Component> components = mlplan.getComponents();
+			Collection<Component> components = new ArrayList<Component>(mlplan.getComponents());
 
 			// Create all possible pipeline combinations
 			List<Component> classifiers = new ArrayList<Component>();
 			HashMap<String, Component> evaluators = new HashMap<String, Component>();
 			HashMap<String, Component> searchers = new HashMap<String, Component>();
+			Component pipelineComponent = null;
+			Component attributeSelectionComponent = null;
 
 			for (Component component : components) {
 				if (component.getName().contains("classifier"))
@@ -110,7 +112,19 @@ public class PipelineEnumarator {
 					evaluators.put(component.getName(), component);
 				if (component.getProvidedInterfaces().contains("searcher"))
 					searchers.put(component.getName(), component);
+				if (component.getName().equals("pipeline"))
+					pipelineComponent = component;
+				if (component.getName().equals("weka.attributeSelection.AttributeSelection"))
+					attributeSelectionComponent = component;
 			}
+
+			components.removeAll(classifiers);
+			components.removeAll(evaluators.values());
+			components.removeAll(searchers.values());
+
+			System.out.println("Remaining components:");
+			for (Component comp : components)
+				System.out.println(comp.toString());
 
 			List<Pair<Component, Component>> evaluatorSearcherPairs = new ArrayList<Pair<Component, Component>>();
 			evaluatorSearcherPairs
@@ -149,12 +163,15 @@ public class PipelineEnumarator {
 			for (Component classifier : classifiers) {
 				ArrayList<Component> onlyClassifier = new ArrayList<Component>();
 				onlyClassifier.add(classifier);
+				onlyClassifier.add(pipelineComponent);
 				allPipelineCombinations.add(onlyClassifier);
 				for (Pair<Component, Component> pair : evaluatorSearcherPairs) {
 					ArrayList<Component> preprocessorClassifierCombination = new ArrayList<Component>();
 					preprocessorClassifierCombination.add(classifier);
 					preprocessorClassifierCombination.add(pair.getFirst());
 					preprocessorClassifierCombination.add(pair.getSecond());
+					preprocessorClassifierCombination.add(pipelineComponent);
+					preprocessorClassifierCombination.add(attributeSelectionComponent);
 					allPipelineCombinations.add(preprocessorClassifierCombination);
 				}
 			}
@@ -163,8 +180,6 @@ public class PipelineEnumarator {
 			Instances data = OpenMLHelper.getInstancesById(openMLDatasetID);
 
 			for (Collection<Component> currentComponents : allPipelineCombinations) {
-				System.out.println("Random configurations for: " + currentComponents);
-
 				MLPlanWekaBuilder builder = new MLPlanWekaBuilder();
 				WekaMLPlanWekaClassifier currentMLPlan = new WekaMLPlanWekaClassifier(currentComponents);
 				currentMLPlan.setData(data);
@@ -173,9 +188,10 @@ public class PipelineEnumarator {
 				RandomSearch rs = new RandomSearch(gsi, 187);
 				// if there are no parameters, we don't need several completions
 				int repetitions = getNumberParamsOfPipeline(components) < 1 ? 1 : NUMBER_COMPLETIONS;
+				int completions = 0;
 				System.out.println("\n\nRandom completions for " + currentMLPlan.getComponents() + " with "
 						+ repetitions + "repetitions:");
-				for (int i = 0; i < repetitions && rs.hasNext(); i++) {
+				while (completions < repetitions && rs.hasNext()) {
 					try {
 						SearchGraphPath sgp = rs.nextSolution();
 						TFDNode goalNode = (TFDNode) sgp.getNodes().get(sgp.getNodes().size() - 1);
@@ -183,14 +199,23 @@ public class PipelineEnumarator {
 						ComponentInstance ci = Util.getSolutionCompositionFromState(mlplan.getComponents(),
 								goalNode.getState(), true);
 						MLPipeline mlp = factory.getComponentInstantiation(ci);
+						// if we are using preprocessing, make sure to have pipelines which actually use
+						// preprocessors and don't leave them out
+						if (currentComponents.size() > 2 && mlp.getPreprocessors().isEmpty()) {
+							continue;
+						}
 						ObjectMapper mapper = new ObjectMapper();
 						String compositionString = mapper.writeValueAsString(ci);
 						Map<String, String> valueMap = new HashMap<>();
 						valueMap.put("composition", compositionString);
 						valueMap.put("mlpipeline", mlp.toString());
+						System.out.println("size:" + currentComponents.size());
+						System.out.println(mlp);
+						completions++;
 						sqlAdapter.insert(DB_TABLE_NAME, valueMap);
 					} catch (Exception e) {
 						e.printStackTrace();
+						continue;
 					}
 				}
 			}
