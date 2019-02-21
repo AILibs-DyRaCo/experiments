@@ -78,6 +78,7 @@ public class ZeroShotCurvesExperiment {
 		put("38", "dataset_38_sick.arff");
 		put("44", "dataset_44_spambase.arff");
 		put("46", "dataset_46_splice.arff");
+		put("183", "dataset_183_abalone.arff");
 }};
 	
 	public static double[] getDatasetLandmarkers(SQLAdapter adapter, int dataset) throws SQLException {
