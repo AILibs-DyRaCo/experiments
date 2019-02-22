@@ -25,6 +25,12 @@ public interface IZeroShotCurvesConfig extends Mutable {
 	
 	public static final String SEED = "seed";
 	
+	public static final String INIT_HYPERPARS = "init_hyperpars";
+	
+	public static final String RANDOM_RESTARTS = "randomrestarts";
+	
+	public static final String RESTART_SEED = "restartseed";
+	
 	@Key(SCALER_PATH)
 	public String getScalerPath();
 	
@@ -54,4 +60,13 @@ public interface IZeroShotCurvesConfig extends Mutable {
 	
 	@Key(SEED)
 	public int getSeed();
+	
+	@Key(INIT_HYPERPARS)
+	public double[] getInitHyperPars();
+	
+	@Key(RANDOM_RESTARTS)
+	public int getRandomRestarts();
+	
+	@Key(RESTART_SEED)
+	public int getRestartSeed();
 }

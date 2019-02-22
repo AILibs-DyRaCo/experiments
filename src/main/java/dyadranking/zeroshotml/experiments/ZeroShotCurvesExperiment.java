@@ -13,6 +13,8 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 
 import org.aeonbits.owner.ConfigFactory;
@@ -28,6 +30,7 @@ import jaicore.ml.dyadranking.zeroshot.inputoptimization.PLNetInputOptimizer;
 import jaicore.ml.dyadranking.zeroshot.util.InputOptListener;
 import jaicore.ml.dyadranking.zeroshot.util.ZeroShotUtil;
 import weka.classifiers.Evaluation;
+import weka.classifiers.functions.MultilayerPerceptron;
 import weka.classifiers.functions.SMO;
 import weka.classifiers.trees.J48;
 import weka.classifiers.trees.RandomForest;
@@ -56,6 +59,12 @@ public class ZeroShotCurvesExperiment {
 	private static final int NUM_ITERATIONS = config.getNumIterations();
 	
 	private static final int SEED = config.getSeed();
+	
+	private static final double[] INIT_HYPERPARS = config.getInitHyperPars();
+	
+	private static final int RANDOM_RESTARTS = config.getRandomRestarts();
+	
+	private static final int RESTART_SEED = config.getRestartSeed();
 	
 	private static Map<String, String> datasetIdMap = new HashMap<String, String>() {{
 		put("12", "dataset_12_mfeat-factors.arff");
@@ -91,15 +100,6 @@ public class ZeroShotCurvesExperiment {
 		double[] yArray = arrayDeserializer.splitAsStream(serializedY).mapToDouble(Double::parseDouble).toArray();
 		
 		return yArray;
-	}
-	
-	public static double[] getInitialHyperPars(int numPars) {
-		double[] initHyperPars = new double[numPars];
-		for (int i = 0; i < numPars; i++) {
-			initHyperPars[i] = 0.5;
-		}
-		
-		return initHyperPars;
 	}
 	
 	public static double evaluateJ48(INDArray hyperPars, Instances data, DyadNormalScaler scaler) {
@@ -205,6 +205,41 @@ public class ZeroShotCurvesExperiment {
 		return score;
 	}
 	
+	public static double evaluateMLP(INDArray hyperPars, Instances data, DyadNormalScaler scaler) {
+		MultilayerPerceptron mlp = new MultilayerPerceptron();
+		double score = 0.0;
+		
+		double L_exp = hyperPars.getDouble(0);
+		double M_exp = hyperPars.getDouble(1);
+		double N = hyperPars.getDouble(2);
+		
+		// Undo normalization
+		L_exp *= scaler.getStatsY()[0].getMax() - scaler.getStatsY()[0].getMin();
+		L_exp += scaler.getStatsY()[0].getMin();		
+		M_exp *= scaler.getStatsY()[1].getMax() - scaler.getStatsY()[1].getMin();
+		M_exp += scaler.getStatsY()[1].getMin();		
+		N *= scaler.getStatsY()[2].getMax() - scaler.getStatsY()[2].getMin();
+		N += scaler.getStatsY()[2].getMin();
+		
+		try {
+			mlp.setOptions(ZeroShotUtil.mapMLPInputsToWekaOptions(L_exp, M_exp, N));
+		} catch (Exception e) {
+			// Invalid parameters
+			e.printStackTrace();
+			return 0.0;
+		}
+		try {
+			Evaluation eval = new Evaluation(data);
+			eval.crossValidateModel(mlp, data, 5, new Random(SEED));
+			score = eval.pctCorrect();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return 0.0;
+		}
+		
+		return score;
+	}
+	
 	public static void main(String[] args) throws SQLException, IOException {
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		
@@ -230,14 +265,7 @@ public class ZeroShotCurvesExperiment {
 				System.exit(1);
 			}
 		}		
-		
-		PLNetDyadRanker plNet = new PLNetDyadRanker();
-		try {
-			plNet.loadModelFromFile(PLNET_PATH);
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
+		DyadNormalScaler scalerFinal = scaler;
 		
 		int numHyperpars = 0;
 		switch(CLASSIFIER) {
@@ -255,70 +283,115 @@ public class ZeroShotCurvesExperiment {
 			break;
 		}
 		
+		int numHyperparsFinal = numHyperpars;
+		
+		ExecutorService executor = Executors.newFixedThreadPool(6);
+		
 		for(int dataset : DATASETS_TEST) {
-			System.out.println("Evaluating data set: " + dataset);
-			
-			File outputFile = new File(OUTPUT_PATH + dataset);
-			if (!outputFile.exists()) {
-				outputFile.createNewFile();
-			}
-			PrintWriter outStream = new PrintWriter(outputFile);
-			
-			double[] datasetFeatures = getDatasetLandmarkers(adapter, dataset);
-			INDArray dsFeat = Nd4j.create(datasetFeatures);
-			INDArray initHyperPars = Nd4j.create(getInitialHyperPars(numHyperpars));
-			INDArray inputMask = Nd4j.hstack(Nd4j.zeros(dsFeat.columns()), Nd4j.ones(numHyperpars));			
-			INDArray init = Nd4j.hstack(dsFeat, initHyperPars);
-			
-			int[] indicesToWatch = new int[numHyperpars];
-			for (int i = 0; i < numHyperpars; i++) {
-				indicesToWatch[i] = (int) (init.length() - numHyperpars + i);
-			}
-			InputOptListener listener = new InputOptListener(indicesToWatch);
-			PLNetInputOptimizer inputOpt = new PLNetInputOptimizer();
-			inputOpt.setListener(listener);
-			INDArray optimized = inputOpt.optimizeInput(
-					plNet, init, new NegIdentityInpOptLoss(), LEARNING_RATE, NUM_ITERATIONS, inputMask);
-			
-			Instances evalData;
+			executor.execute(() -> {
+			PLNetDyadRanker plNet = new PLNetDyadRanker();
 			try {
-				evalData = new Instances(new BufferedReader(
-						new FileReader(new File(EVAL_DATA_PATH 
-								+ File.separator 
-								+ datasetIdMap.get(dataset + "")))));
-				evalData.setClassIndex(evalData.numAttributes() - 1);
-				for (INDArray inp : listener.getInputList()) {
-					double score = 0.0;
-					switch(CLASSIFIER) {
-					case "j48":
-						score = evaluateJ48(inp, evalData, scaler);
-						break;
-					case "rf":
-						score = evaluateRF(inp, evalData, scaler);
-						break;
-					case "smo":
-						score = evaluateSMO(inp,evalData,scaler);
-						break;
-					case "mlp":
-						// TODO: add MLP
-						break;
+				plNet.loadModelFromFile(PLNET_PATH);
+			} catch (IOException e) {
+				e.printStackTrace();
+				System.exit(1);
+			}		
+			
+			Random restartRng = new Random(RESTART_SEED);
+			int num_restarts = RANDOM_RESTARTS == 0 ? 1 : RANDOM_RESTARTS;
+			for (int rndStart = 0; rndStart < num_restarts; rndStart++) {
+				System.out.println("Evaluating data set: " + dataset + " try " + rndStart);
+				
+				File outputFile = new File(OUTPUT_PATH + dataset + "_" + rndStart);
+				if (!outputFile.exists()) {
+					try {
+						outputFile.createNewFile();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
 					}
-					System.out.print(score + ",");
-					outStream.print(score + ",");
+				}
+				PrintWriter outStream = null;
+				try {
+					outStream = new PrintWriter(outputFile);
+				} catch (FileNotFoundException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+				
+				double[] initHyperParsArr = INIT_HYPERPARS;
+				if(RANDOM_RESTARTS > 0) {
+					initHyperParsArr = new double[numHyperparsFinal];
+					for (int i = 0; i < numHyperparsFinal; i++) {
+						initHyperParsArr[i] = restartRng.nextDouble();
+					}
+				}
+				
+				double[] datasetFeatures = null;
+				try {
+					datasetFeatures = getDatasetLandmarkers(adapter, dataset);
+				} catch (SQLException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+				INDArray dsFeat = Nd4j.create(datasetFeatures);
+				INDArray initHyperPars = Nd4j.create(initHyperParsArr);
+				INDArray inputMask = Nd4j.hstack(Nd4j.zeros(dsFeat.columns()), Nd4j.ones(numHyperparsFinal));			
+				INDArray init = Nd4j.hstack(dsFeat, initHyperPars);
+				
+				int[] indicesToWatch = new int[numHyperparsFinal];
+				for (int i = 0; i < numHyperparsFinal; i++) {
+					indicesToWatch[i] = (int) (init.length() - numHyperparsFinal + i);
+				}
+				InputOptListener listener = new InputOptListener(indicesToWatch);
+				PLNetInputOptimizer inputOpt = new PLNetInputOptimizer();
+				inputOpt.setListener(listener);
+				INDArray optimized = inputOpt.optimizeInput(
+						plNet, init, new NegIdentityInpOptLoss(), LEARNING_RATE, NUM_ITERATIONS, inputMask);
+				
+				Instances evalData;
+				try {
+					evalData = new Instances(new BufferedReader(
+							new FileReader(new File(EVAL_DATA_PATH 
+									+ File.separator 
+									+ datasetIdMap.get(dataset + "")))));
+					evalData.setClassIndex(evalData.numAttributes() - 1);
+					for (INDArray inp : listener.getInputList()) {
+						double score = 0.0;
+						switch(CLASSIFIER) {
+						case "j48":
+							score = evaluateJ48(inp, evalData, scalerFinal);
+							break;
+						case "rf":
+							score = evaluateRF(inp, evalData, scalerFinal);
+							break;
+						case "smo":
+							score = evaluateSMO(inp, evalData, scalerFinal);
+							break;
+						case "mlp":
+							score = evaluateMLP(inp, evalData, scalerFinal);
+							break;
+						}
+						System.out.print(score + ",");
+						outStream.print(score + ",");
+					}
+					outStream.println();
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				for (double output : listener.getOutputList()) {
+					outStream.print(output + ",");
 				}
 				outStream.println();
-			} catch (FileNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				outStream.println(optimized);
+				outStream.println(ZeroShotUtil.unscaleParameters(optimized, scalerFinal));
+				outStream.close();
 			}
-			for (double output : listener.getOutputList()) {
-				outStream.print(output + ",");
-			}
-			outStream.println();
-			outStream.close();
+		});
 		}
 	}
 	
