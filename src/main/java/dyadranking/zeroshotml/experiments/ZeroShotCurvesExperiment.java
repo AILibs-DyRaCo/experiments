@@ -372,7 +372,6 @@ public class ZeroShotCurvesExperiment {
 							score = evaluateMLP(inp, evalData, scalerFinal);
 							break;
 						}
-						System.out.print(score + ",");
 						outStream.print(score + ",");
 					}
 					outStream.println();
@@ -387,8 +386,7 @@ public class ZeroShotCurvesExperiment {
 					outStream.print(output + ",");
 				}
 				outStream.println();
-				outStream.println(optimized);
-				outStream.println(ZeroShotUtil.unscaleParameters(optimized, scalerFinal));
+				outStream.println(ZeroShotUtil.unscaleParameters(optimized, scalerFinal, numHyperparsFinal));
 				outStream.close();
 			}
 		});
