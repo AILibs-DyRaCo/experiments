@@ -1,0 +1,17 @@
+% This is a simple toy dataset which is used to reveal exceptions that are eventually thrown by MLPlan
+
+@relation toy
+@attribute 'attr-one' real
+@attribute 'attr-two' integer
+@attribute 'attr-three' {michael, helena, mirko, jonas}
+@attribute 'class' {class-one, class-two, class-three}
+@data
+1.337,15,michael,class-one
+1.0,1337,?,class-two
+77.547,44,jonas,class-one
+1.337,15,helena,class-three
+22.77,-33,mirko,class-one
+3.1415,187,michael,class-three
+25.252525,64,jonas,class-three
+1.337,?,helena,class-three
+?,15,mirko,class-two

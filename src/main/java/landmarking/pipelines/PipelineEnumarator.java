@@ -1,6 +1,7 @@
 package landmarking.pipelines;
 
-import java.io.IOException;
+import java.io.File;
+import java.io.FileReader;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -8,28 +9,28 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 
 import org.apache.commons.math3.util.Pair;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import de.upb.crc901.mlplan.multiclass.wekamlplan.MLPlanWekaBuilder;
+import de.upb.crc901.mlplan.core.MLPlan;
+import de.upb.crc901.mlplan.core.MLPlanBuilder;
 import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WEKAPipelineFactory;
-import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WekaMLPlanWekaClassifier;
 import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.model.MLPipeline;
 import dyadranking.sql.SQLUtils;
 import hasco.core.Util;
 import hasco.model.Component;
 import hasco.model.ComponentInstance;
 import jaicore.basic.SQLAdapter;
-import jaicore.basic.algorithm.AlgorithmExecutionCanceledException;
-import jaicore.ml.openml.OpenMLHelper;
-import jaicore.planning.graphgenerators.task.tfd.TFDNode;
+import jaicore.ml.evaluation.evaluators.weka.SingleRandomSplitClassifierEvaluator;
+import jaicore.planning.hierarchical.algorithms.forwarddecomposition.graphgenerators.tfd.TFDNode;
+import jaicore.search.algorithms.standard.bestfirst.events.GraphSearchSolutionCandidateFoundEvent;
 import jaicore.search.algorithms.standard.random.RandomSearch;
 import jaicore.search.core.interfaces.GraphGenerator;
 import jaicore.search.model.other.SearchGraphPath;
-import jaicore.search.model.probleminputs.GraphSearchInput;
+import jaicore.search.probleminputs.GraphSearchInput;
+import jaicore.search.structure.graphgenerator.SingleRootGenerator;
 import weka.core.Instances;
 
 public class PipelineEnumarator {
@@ -37,6 +38,8 @@ public class PipelineEnumarator {
 	private static int NUMBER_COMPLETIONS = 5;
 
 	private static String DB_TABLE_NAME = "draco_pipelines";
+	
+	private static String DATASET_PATH = "../experiments/datasets/toydataset.arff";
 
 	private static String openMLKey = "4350e421cdc16404033ef1812ea38c01";
 	private static int openMLDatasetID = 40983;
@@ -69,6 +72,7 @@ public class PipelineEnumarator {
 	private static String evaluation9 = "weka.attributeSelection.SymmetricalUncertAttributeEval";
 
 	public static void main(String args[]) {
+		
 		SQLAdapter sqlAdapter = SQLUtils.sqlAdapterFromArgs(args);
 
 		/* initialize tables if not existent */
@@ -95,8 +99,13 @@ public class PipelineEnumarator {
 		}
 
 		try {
-			WekaMLPlanWekaClassifier mlplan = new WekaMLPlanWekaClassifier();
-			Collection<Component> components = new ArrayList<Component>(mlplan.getComponents());
+			
+			Instances data = new Instances(new FileReader(new File(DATASET_PATH)));
+			data.setClassIndex(data.numAttributes()-1);
+			
+			MLPlanBuilder builder = new MLPlanBuilder();
+			builder.withAutoWEKAConfiguration();
+			Collection<Component> components = new ArrayList<Component>(builder.getComponents());
 
 			// Create all possible pipeline combinations
 			List<Component> classifiers = new ArrayList<Component>();
@@ -176,27 +185,33 @@ public class PipelineEnumarator {
 				}
 			}
 
-			OpenMLHelper.setApiKey(openMLKey);
-			Instances data = OpenMLHelper.getInstancesById(openMLDatasetID);
-
 			for (Collection<Component> currentComponents : allPipelineCombinations) {
-				MLPlanWekaBuilder builder = new MLPlanWekaBuilder();
-				WekaMLPlanWekaClassifier currentMLPlan = new WekaMLPlanWekaClassifier(currentComponents);
-				currentMLPlan.setData(data);
+				int numExceptions = 0;
+				MLPlanBuilder builder1 = new MLPlanBuilder();
+				try {
+					builder1.withAutoWEKAConfiguration(currentComponents);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				SingleRandomSplitClassifierEvaluator eval = new SingleRandomSplitClassifierEvaluator(data);
+				MLPlan currentMLPlan = new MLPlan(builder1, data);
 				GraphGenerator gg = currentMLPlan.getGraphGenerator();
 				GraphSearchInput gsi = new GraphSearchInput(gg);
 				RandomSearch rs = new RandomSearch(gsi, 187);
+				SingleRootGenerator<TFDNode> rg = (SingleRootGenerator<TFDNode>) gg.getRootGenerator();
 				// if there are no parameters, we don't need several completions
 				int repetitions = getNumberParamsOfPipeline(components) < 1 ? 1 : NUMBER_COMPLETIONS;
 				int completions = 0;
-				System.out.println("\n\nRandom completions for " + currentMLPlan.getComponents() + " with "
+				System.out.println("\n\nRandom completions for " + builder1.getComponents() + " with "
 						+ repetitions + "repetitions:");
-				while (completions < repetitions && rs.hasNext()) {
+				while (completions < repetitions && rs.hasNext() && numExceptions < 70) {
 					try {
-						SearchGraphPath sgp = rs.nextSolution();
+						GraphSearchSolutionCandidateFoundEvent<?, ?, ?> ev = (GraphSearchSolutionCandidateFoundEvent<?, ?, ?>) rs.nextWithException();
+						SearchGraphPath sgp = ev.getSolutionCandidate();
 						TFDNode goalNode = (TFDNode) sgp.getNodes().get(sgp.getNodes().size() - 1);
 						WEKAPipelineFactory factory = new WEKAPipelineFactory();
-						ComponentInstance ci = Util.getSolutionCompositionFromState(mlplan.getComponents(),
+						ComponentInstance ci = Util.getSolutionCompositionFromState(builder1.getComponents(),
 								goalNode.getState(), true);
 						MLPipeline mlp = factory.getComponentInstantiation(ci);
 						// if we are using preprocessing, make sure to have pipelines which actually use
@@ -204,17 +219,20 @@ public class PipelineEnumarator {
 						if (currentComponents.size() > 2 && mlp.getPreprocessors().isEmpty()) {
 							continue;
 						}
+						double loss = eval.evaluate(mlp);
+						System.out.println(mlp.toString() + loss);
 						ObjectMapper mapper = new ObjectMapper();
 						String compositionString = mapper.writeValueAsString(ci);
 						Map<String, String> valueMap = new HashMap<>();
 						valueMap.put("composition", compositionString);
 						valueMap.put("mlpipeline", mlp.toString());
 						System.out.println("size:" + currentComponents.size());
-						System.out.println(mlp);
+//						System.out.println(mlp);
 						completions++;
 						sqlAdapter.insert(DB_TABLE_NAME, valueMap);
 					} catch (Exception e) {
 						e.printStackTrace();
+						numExceptions++;
 						continue;
 					}
 				}
