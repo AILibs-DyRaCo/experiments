@@ -42,9 +42,10 @@ public class BaseLineGenerator {
 		put("38", "dataset_38_sick.arff");
 		put("44", "dataset_44_spambase.arff");
 		put("46", "dataset_46_splice.arff");
+		put("183", "dataset_183_abalone.arff");
 	}};
 	
-	private static final int[] DATASETS_TEST = { 5, 6, 36, 38, 44, 46 };
+	private static final int[] DATASETS_TEST = { 5, 6, 36, 38, 44, 183 };
 	
 	private static final int SEED = 42;
 	
@@ -79,17 +80,17 @@ public class BaseLineGenerator {
 				}
 			}
 			data.setClassIndex(data.numAttributes() - 1);
-			//Evaluation j48Eval = new Evaluation(data);
-			//Evaluation smoEval = new Evaluation(data);
-			//Evaluation rfEval = new Evaluation(data);
+			Evaluation j48Eval = new Evaluation(data);
+			Evaluation smoEval = new Evaluation(data);
+			Evaluation rfEval = new Evaluation(data);
 			Evaluation mlpEval = new Evaluation(data);
-			//j48Eval.crossValidateModel(j48, data, 10, new Random(SEED));
-			//smoEval.crossValidateModel(smo, data, 5, new Random(SEED));
-			//rfEval.crossValidateModel(rf, data, 5, new Random(SEED));
+			j48Eval.crossValidateModel(j48, data, 10, new Random(SEED));
+			smoEval.crossValidateModel(smo, data, 5, new Random(SEED));
+			rfEval.crossValidateModel(rf, data, 5, new Random(SEED));
 			mlpEval.crossValidateModel(mlp, data, 5, new Random(SEED));
-			//System.out.println("J48 : " + j48Eval.pctCorrect());
-			//System.out.println("SMO : " + smoEval.pctCorrect());
-			//System.out.println("RF : " + rfEval.pctCorrect());
+			System.out.println("J48 : " + j48Eval.pctCorrect());
+			System.out.println("SMO : " + smoEval.pctCorrect());
+			System.out.println("RF : " + rfEval.pctCorrect());
 			System.out.println("MLP : " + mlpEval.pctCorrect());
 			System.out.println();
 			
