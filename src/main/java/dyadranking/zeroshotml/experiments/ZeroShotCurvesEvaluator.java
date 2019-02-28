@@ -68,7 +68,7 @@ public class ZeroShotCurvesEvaluator {
 	
 	private static RandomForest setupRF(Double[] params, int numAttributes) throws Exception {
 		RandomForest rf = new RandomForest();
-		rf.setOptions(ZeroShotUtil.mapRFInputsToWekaOptions(params[0], params[0], params[0], params[0], numAttributes));
+		rf.setOptions(ZeroShotUtil.mapRFInputsToWekaOptions(params[0], params[1], params[2], params[3], numAttributes));
 		
 		return rf;
 	}
