@@ -108,7 +108,7 @@ public class ZeroShotCurvesEvaluator {
 				/* get experiment setup */
 				Map<String, String> description = experimentEntry.getExperiment().getValuesOfKeyFields();
 				
-				String paramsFileName = description.get("classifier") + aux.getParamsFilePrefix() + description.get("data_set")	+ aux.getParamsFileSuffix();
+				String paramsFileName = description.get("classifier") + description.get("paramsfile_prefix") + description.get("data_set")	+ description.get("paramsfile_suffix");
 				List<Double[]> paramsList = new ArrayList<Double[]>();
 				try (BufferedReader reader = new BufferedReader(
 							new FileReader(aux.getParamsFolder()
