@@ -64,3 +64,17 @@ task datasetGenJar(type: Jar) {
     with jar
 }
 
+task patternMiningJar(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.treeminer.PerformanceSamplesToTreeMiner'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'patternMining'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
