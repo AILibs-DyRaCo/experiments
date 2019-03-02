@@ -64,3 +64,18 @@ task datasetGenJar(type: Jar) {
     with jar
 }
 
+// copy this if you want to have a jar that has all dependenices and your main-class
+// use gradle datasetGenJar to make the jar & the jar will be in build/libs/datasetGen.jar
+task jonasGen(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.experiments.cuda.PLNetExperiment'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'jonasJar'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
