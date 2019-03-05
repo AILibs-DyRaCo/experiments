@@ -59,10 +59,12 @@ public class ActiveLearningExperimenter {
 				boolean removeQueriedDyadsFromPool = Boolean.parseBoolean(description.get("remove_queried_dyad"));
 				int numberQueries = Integer.parseInt(description.get("number_queries"));
 				String samplingStrategy = description.get("sampling_strategie");
+				System.out.println(samplingStrategy);
 				double trainRatio = Double.parseDouble(description.get("train_ratio"));
 				int lengthOfTopRankingToConsider = Integer.parseInt(description.get("length_of_top_ranking"));
+				String measure = description.get("measure");
 				String curveTable = m.getLearningCurveTableName();
-
+				
 				/* initialize learning curve table if not existent */
 				try {
 					ResultSet rs = adapter.getResultsOfQuery("SHOW TABLES");
@@ -125,6 +127,8 @@ public class ActiveLearningExperimenter {
 					valueMap.put("old_data_in_minibatch_ratio", Double.toString(ratioOfOldInstancesInMinibatch));
 					valueMap.put("minibatch_size", Integer.toString(minibatchSize));
 					valueMap.put("score", Double.toString(currentScore));
+					valueMap.put("dataset", datasetName);
+					valueMap.put("measure", measure);
 					valueMap.put("evaluation_date",
 							new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date.from(Instant.now())));
 					adapter.insert(curveTable, valueMap);

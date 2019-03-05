@@ -21,6 +21,7 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public static final String DATASETS = "datasets";
 	public static final String LENGTH_OF_TOP_RANKING = "length_of_top_rankings";
 	public static final String LEARNING_CURVE_TABLENAME = "learning_curve_tablename";
+	public static final String MEASURES = "measures";
 
 	
 	@Key(SAMPLING_STRATEGIES)
@@ -55,5 +56,8 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public List<String> getDatasets();
 	
 	@Key(LENGTH_OF_TOP_RANKING)
-	public List<String> getLengthOfTopRanking();
+	public List<String> getLengthOfTopRanking();	
+	
+	@Key(MEASURES)
+	public List<String> getMeasures();
 }
