@@ -118,20 +118,16 @@ public class ActiveLearningExperimenter {
 					currentScore = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData, plNet);
 				
 					Map<String, String> valueMap = new HashMap<>();
-					valueMap.put("seed", compositionString);
-					valueMap.put("query_step", trainTrajectoryString);
-					valueMap.put("sampling_strategy", testTrajectoryString);
-					valueMap.put("train_ratio", className);
+					valueMap.put("seed", Integer.toString(seed));
+					valueMap.put("query_step", Integer.toString(iteration));
+					valueMap.put("sampling_strategy", samplingStrategy);
+					valueMap.put("train_ratio", Double.toString(trainRatio));
+					valueMap.put("old_data_in_minibatch_ratio", Double.toString(ratioOfOldInstancesInMinibatch));
+					valueMap.put("minibatch_size", Integer.toString(minibatchSize));
+					valueMap.put("score", Double.toString(currentScore));
 					valueMap.put("evaluation_date",
 							new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date.from(Instant.now())));
-					valueMap.put("old_data_in_minibatch_ratio", Long.toString(evaluationTime));
-					valueMap.put("minibatch_size", hexHash);
-					valueMap.put("minibatch_size", hexHash);
-					valueMap.put("minibatch_size", hexHash);
-					valueMap.put("score", Double.toString(score));
-					this.sqlAdapter.insert(this.performanceSampleTableName, valueMap);
-				
-				
+					adapter.insert(curveTable, valueMap);
 				}
 
 				/* run experiment */
