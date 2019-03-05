@@ -8,7 +8,7 @@ import org.aeonbits.owner.Config.Sources;
 
 import jaicore.experiments.IExperimentSetConfig;
 
-@Sources({ "classpath:./dyadranking/activelearning/experimenter/setup.properties" })
+@Sources({ "file:./activelearner.properties" })
 public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public static final String SAMPLING_STRATEGIES = "sampling_strategies";
 	public static final String SEEDS = "seeds";
