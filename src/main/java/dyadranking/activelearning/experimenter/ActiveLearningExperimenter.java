@@ -52,10 +52,10 @@ public class ActiveLearningExperimenter {
 				/* get experiment setup */
 				Map<String, String> description = experimentEntry.getExperiment().getValuesOfKeyFields();
 				int seed = Integer.parseInt(description.get("seed"));
-				String datasetName = description.get(IActiveLearningConfig.DATASETS);
+				String datasetName = description.get("dataset");
 				int minibatchSize = Integer.parseInt(description.get("minibatch_size"));
 				double ratioOfOldInstancesInMinibatch = Double
-						.parseDouble(description.get("minibatch_ratio_of_old_instance"));
+						.parseDouble(description.get("minibatch_ratio_of_old_instances"));
 				boolean removeQueriedDyadsFromPool = Boolean.parseBoolean(description.get("remove_queried_dyad"));
 				int numberQueries = Integer.parseInt(description.get("number_queries"));
 				String samplingStrategy = description.get("sampling_strategie");
@@ -92,7 +92,7 @@ public class ActiveLearningExperimenter {
 				}
 
 				DyadRankingDataset dataset = new DyadRankingDataset();
-				dataset.deserialize(new FileInputStream(new File(m.getDatasetFolder() + datasetName)));
+				dataset.deserialize(new FileInputStream(new File(m.getDatasetFolder()+ "/" + datasetName)));
 				Collections.shuffle(dataset, new Random(seed));
 				DyadRankingDataset trainData = new DyadRankingDataset(
 						dataset.subList(0, (int) (dataset.size() * trainRatio)));
@@ -145,5 +145,4 @@ public class ActiveLearningExperimenter {
 		});
 		runner.randomlyConductExperiments(true);
 	}
-
 }
