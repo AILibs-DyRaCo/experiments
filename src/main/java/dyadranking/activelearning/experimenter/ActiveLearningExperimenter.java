@@ -64,7 +64,7 @@ public class ActiveLearningExperimenter {
 				double trainRatio = Double.parseDouble(description.get("train_ratio"));
 				int lengthOfTopRankingToConsider = Integer.parseInt(description.get("length_of_top_ranking"));
 //				int numberRandomQueriesAtStart = Integer.parseInt(description.get("number_random_queries_at_start"));
-				int numberRandomQueriesAtStart = 1;
+				int numberRandomQueriesAtStart = 5;
 				String measure = description.get("measure");
 				String curveTable = m.getLearningCurveTableName();
 
@@ -87,7 +87,7 @@ public class ActiveLearningExperimenter {
 								+ " `top_ranking_length` double NOT NULL,\r\n" + " `minibatch_size` int NOT NULL,\r\n"
 								+ " `dataset` varchar(200) NOT NULL,\r\n" + " `remove_queried_dyads` bit ,\r\n"
 								+ " `measure` varchar(200) NOT NULL,\r\n" + " `score_oos` double NOT NULL,\r\n"
-								+ " `score_is` double NOT NULL,\r\n" + "`evaluation_date` timestamp NULL DEFAULT NULL,"
+								+ " `score_is` double,\r\n" + "`evaluation_date` timestamp NULL DEFAULT NULL,"
 								+ " PRIMARY KEY (`evaluation_id`)\r\n"
 								+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
 								new ArrayList<>());
@@ -134,9 +134,13 @@ public class ActiveLearningExperimenter {
 				for (int iteration = 0; iteration < numberQueries; iteration++) {
 					currentLossOOS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData,
 							plNet);
-					currentLossIS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), trainData,
+					DyadRankingDataset queriedPairs = new DyadRankingDataset(poolProvider.getQueriedRankings());
+					if(queriedPairs.size()>0) {
+					currentLossIS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), queriedPairs,
 							plNet);
+					}
 					System.out.println("removing from pool: " + removeQueriedDyadsFromPool);
+					System.out.println("in sample: " + currentLossIS);
 					Map<String, Object> valueMap = new HashMap<>();
 					valueMap.put("seed", Integer.toString(seed));
 					valueMap.put("query_step", Integer.toString(iteration));
