@@ -1,11 +1,8 @@
 package dyadranking.performance;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -34,7 +31,8 @@ import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.dataset.SparseDyadRankingInstance;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
-import jaicore.ml.dyadranking.util.DyadStandardScaler;
+import jaicore.ml.dyadranking.util.AbstractDyadScaler;
+import jaicore.ml.dyadranking.util.DyadUnitIntervalScaler;
 
 public class DyadDatasetGenerator {
 
@@ -150,7 +148,7 @@ public class DyadDatasetGenerator {
 
 		dyadTable = config.getTableName();
 
-		String resultTableName = "dyad_ranking_approach_1_results_no_scaling_cuda";
+		String resultTableName = "dyad_ranking_approach_1_results_standardize";
 		createResultTable(adapter, resultTableName);
 
 		int counter = 0;
@@ -168,10 +166,10 @@ public class DyadDatasetGenerator {
 						DyadRankingDataset testDataset = getSparseDyadDataset(seed + 2, 200, testRankingLength,
 								split.testDatasetIds, adapter);
 
-//						DyadStandardScaler scaler = new DyadStandardScaler();
-//						scaler.fit(trainDataset);
-//						scaler.transformAlternatives(trainDataset);
-//						scaler.transformAlternatives(testDataset);
+						 AbstractDyadScaler scaler = new DyadUnitIntervalScaler();
+						 scaler.fit(trainDataset);
+						 scaler.transformAlternatives(trainDataset);
+						 scaler.transformAlternatives(testDataset);
 
 						PLNetDyadRanker ranker = new PLNetDyadRanker();
 
@@ -182,11 +180,11 @@ public class DyadDatasetGenerator {
 
 						double loss = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(),
 								testDataset, ranker);
-//				x		try (ObjectOutputStream osOut = new ObjectOutputStream(
-//								new FileOutputStream(new File("scaler_out_" + counter + ".ser")))) {
-			//				osOut.writeObject(scaler);
-//						} catch (IOException e) {
-//						}
+						// x try (ObjectOutputStream osOut = new ObjectOutputStream(
+						// new FileOutputStream(new File("scaler_out_" + counter + ".ser")))) {
+						// osOut.writeObject(scaler);
+						// } catch (IOException e) {
+						// }
 
 						System.out.println("Average Kendalls Tau: " + loss);
 						Map<String, Object> results = new HashMap<>();
@@ -211,11 +209,21 @@ public class DyadDatasetGenerator {
 	}
 
 	private static void createResultTable(SQLAdapter adapter, String tableName) throws SQLException {
-		adapter.update("CREATE TABLE " + tableName + " (`id` int(10) NOT NULL,\r\n"
-				+ " `ranking_length_train` int(10) NOT NULL, \r \n" + " `ranking_length_test` int(10) NOT NULL,\r\n"
-				+ " `avg_kendalls_tau` double NOT NULL, \r \n" + "`seed` int(10) NOT NULL, \r \n"
-				+ "`num_dyads_train` int(10) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
-				new ArrayList<>());
+		ResultSet rs = adapter.getResultsOfQuery("SHOW TABLES");
+		boolean hasPerformanceTable = false;
+		while (rs.next()) {
+			String ptableName = rs.getString(1);
+			if (ptableName.equals(tableName))
+				hasPerformanceTable = true;
+		}
+
+		if (!hasPerformanceTable) {
+			adapter.update("CREATE TABLE " + tableName + " (`id` int(10) NOT NULL,\r\n"
+					+ " `ranking_length_train` int(10) NOT NULL, \r \n" + " `ranking_length_test` int(10) NOT NULL,\r\n"
+					+ " `avg_kendalls_tau` double NOT NULL, \r \n" + "`seed` int(10) NOT NULL, \r \n"
+					+ "`num_dyads_train` int(10) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
+					new ArrayList<>());
+		}
 	}
 
 	@SuppressWarnings("unused")

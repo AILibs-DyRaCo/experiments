@@ -39,7 +39,7 @@ dependencies {
     compile ('de.upb.isys:AILibs:')
 
     // The production code uses the SLF4J logging API at compile time
-    compile 'org.slf4j:slf4j-api:1.7.25'
+   // compile 'org.slf4j:slf4j-api:1.7.25'
 
     // Declare the dependency for your favourite test framework you want to use in your tests.
     // TestNG is also supported by the Gradle Test task. Just change the
@@ -78,3 +78,75 @@ task patternMiningJar(type: Jar) {
     with jar
 }
 
+
+task approachOneRanker(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.performance.CompletePLNetTrainer'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'approachOneRanker'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+task approachFiveDatasets(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.performance.ContextSensitiveAllPairsDyadDatasetGen'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'approachFiveDatasets'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+task subsamplingBasedPLNetTrainer(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.performance.SubsamplingBasedPLNetTrainer'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'subsamplingBasedPLNetTrainer'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+task subsamplingBasedDatasetGenerator(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.performance.SubsamplingBasedDatasetGenerator'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'subsamplingBasedDatasetGenerator'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+task jsonConfigBasedPLNetTrainer(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': ' dyadranking.performance.JsonConfigBasedPLNetTrainer'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'jsonConfigBasedPLNetTrainer'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}

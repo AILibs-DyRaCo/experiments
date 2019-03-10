@@ -16,8 +16,8 @@ import org.semanticweb.owlapi.model.OWLOntologyCreationException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import de.upb.crc901.mlplan.metamining.pipelinecharacterizing.ManualPatternMiner;
 import de.upb.isys.linearalgebra.DenseDoubleVector;
-import dyadranking.performance.ManualPatternMiner;
 import dyadranking.sql.SQLUtils;
 import hasco.model.ComponentInstance;
 import hasco.serialization.ComponentLoader;
@@ -38,11 +38,11 @@ public class PerformanceSamplesToManualMiner {
 
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 
-		String resultTableName = "dyad_dataset_approach_1_performance_samples";
+		String resultTableName = "dyad_dataset_approach_5_performance_samples_full";
 
 		ObjectMapper mapper = new ObjectMapper();
 		File jsonFile = Paths.get(ManualPatternMiner.class.getClassLoader()
-				.getResource(Paths.get("automl", "searchmodels", "weka", "weka-all-autoweka.json").toString()).toURI())
+				.getResource(Paths.get("weka", "weka-approach-5-autoweka.json").toString()).toURI())
 				.toFile();
 		ComponentLoader loader = new ComponentLoader(jsonFile);
 		mapper.registerModule(new HASCOJacksonModule(loader.getComponents()));
@@ -54,8 +54,9 @@ public class PerformanceSamplesToManualMiner {
 
 		// select the average score for a distinct pipeline on a dataset
 		ResultSet pipelinesGroupedByDataset = adapter.getResultsOfQuery(
-				"SELECT composition, dataset_id, loss, pipeline_id FROM `draco_pipeline_performance` NATURAL JOIN draco_pipelines");
+				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers` NATURAL JOIN draco_pipelines_5_classifiers WHERE loss IS NOT NULL");
 
+		System.out.println("Query done");
 		while (pipelinesGroupedByDataset.next()) {
 			String composition = pipelinesGroupedByDataset.getString(1);
 			int dataset = Integer.parseInt(pipelinesGroupedByDataset.getString(2).replaceAll("\"", ""));
@@ -63,7 +64,7 @@ public class PerformanceSamplesToManualMiner {
 			int pipelineId = pipelinesGroupedByDataset.getInt(4);
 			// deserialize component-instance
 			ComponentInstance cI = mapper.readValue(composition, ComponentInstance.class);
-			double[] y = characterizer.characterize(cI, new DenseDoubleVector(252, 0));
+			double[] y = characterizer.characterize(cI, new DenseDoubleVector(characterizer.getLengthOfCharacrization(), 0));
 			String serializedY = Arrays.stream(y).mapToObj(d -> d + "").collect(Collectors.joining(" "));
 
 			Map<String, Object> values = new HashMap<>();
