@@ -39,10 +39,10 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public List<String> getNumberQueries();
 	
 	@Key(TRAIN_RATIO)
-	public List<String> getTrainRatios();
+	public String getTrainRatios();
 
 	@Key(MINIBATCH_RATIO_OF_OLD_INSTANCES)
-	public List<String> getMinibatchRatioOfOldInstances();
+	public String getMinibatchRatioOfOldInstances();
 
 	@Key(MINIBATCH_SIZE)
 	public List<String> getMinibatchSize();
@@ -57,11 +57,11 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public List<String> getDatasets();
 	
 	@Key(LENGTH_OF_TOP_RANKING)
-	public List<String> getLengthOfTopRanking();
+	public String getLengthOfTopRanking();
 	
 	@Key(MEASURES)
 	public List<String> getMeasures();
 	
 	@Key(NUMBER_RANDOM_QUERIES_AT_START)
-	public List<String> getNumberRandomQueriesAtStart();
+	public String getNumberRandomQueriesAtStart();
 }

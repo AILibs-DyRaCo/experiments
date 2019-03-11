@@ -10,10 +10,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
 import org.aeonbits.owner.ConfigCache;
+import org.moeaframework.core.termination.CompoundTerminationCondition;
 
 import jaicore.basic.SQLAdapter;
 import jaicore.experiments.ExperimentDBEntry;
@@ -29,8 +31,10 @@ import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
+import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
+import jaicore.ml.dyadranking.loss.KendallsTauOfTopK;
 import jaicore.ml.dyadranking.util.DyadStandardScaler;
 
 public class ActiveLearningExperimenter {
@@ -57,16 +61,18 @@ public class ActiveLearningExperimenter {
 				int seed = Integer.parseInt(description.get("seed"));
 				String datasetName = description.get("dataset");
 				int minibatchSize = Integer.parseInt(description.get("minibatch_size"));
+				System.out.println("minibratio " + m.getMinibatchRatioOfOldInstances());
 				double ratioOfOldInstancesInMinibatch = Double
-						.parseDouble(description.get("minibatch_ratio_of_old_instances"));
+						.parseDouble(m.getMinibatchRatioOfOldInstances());
 				boolean removeQueriedDyadsFromPool = Boolean.parseBoolean(description.get("remove_queried_dyads"));
 				int numberQueries = Integer.parseInt(description.get("number_queries"));
 				String samplingStrategy = description.get("sampling_strategie");
+
 				System.out.println(samplingStrategy);
-				double trainRatio = Double.parseDouble(description.get("train_ratio"));
-				int lengthOfTopRankingToConsider = Integer.parseInt(description.get("length_of_top_ranking"));
+				double trainRatio = Double.parseDouble(m.getTrainRatios());
+				int lengthOfTopRankingToConsider = Integer.parseInt(m.getLengthOfTopRanking());
 //				int numberRandomQueriesAtStart = Integer.parseInt(description.get("number_random_queries_at_start"));
-				int numberRandomQueriesAtStart = 5;
+				int numberRandomQueriesAtStart = Integer.parseInt(m.getNumberRandomQueriesAtStart());
 				String measure = description.get("measure");
 				String curveTable = m.getLearningCurveTableName();
 
@@ -84,12 +90,11 @@ public class ActiveLearningExperimenter {
 						adapter.update("CREATE TABLE `" + curveTable + "` (\r\n"
 								+ " `evaluation_id` int(10) NOT NULL AUTO_INCREMENT,\r\n" + " `seed` json NOT NULL,\r\n"
 								+ " `query_step` int NOT NULL,\r\n" + "`sampling_strategy` varchar(200) NOT NULL,\r\n"
-								+ " `train_ratio` double NOT NULL,\r\n"
-								+ " `old_data_in_minibatch_ratio` double NOT NULL,\r\n"
-								+ " `top_ranking_length` double NOT NULL,\r\n" + " `minibatch_size` int NOT NULL,\r\n"
-								+ " `dataset` varchar(200) NOT NULL,\r\n" + " `remove_queried_dyads` bit ,\r\n"
-								+ " `measure` varchar(200) NOT NULL,\r\n" + " `score_oos` double NOT NULL,\r\n"
-								+ " `score_is` double,\r\n" + "`evaluation_date` timestamp NULL DEFAULT NULL,"
+								+ " `minibatch_size` int NOT NULL,\r\n" + " `dataset` varchar(200) NOT NULL,\r\n"
+								+ " `remove_queried_dyads` bit ,\r\n" + " `score_oos` double NOT NULL,\r\n"
+								+ " `score_is` double NOT NULL,\r\n" + " `top_3_tau` double NOT NULL,\r\n"
+								+ " `top_5_tau` double NOT NULL,\r\n" + " `top_10_tau` double NOT NULL,\r\n"
+								+ "`evaluation_date` timestamp NULL DEFAULT NULL,"
 								+ " PRIMARY KEY (`evaluation_id`)\r\n"
 								+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
 								new ArrayList<>());
@@ -122,7 +127,8 @@ public class ActiveLearningExperimenter {
 				ActiveDyadRanker activeRanker = null;
 				if (samplingStrategy.equals("prototypical")) {
 					activeRanker = new PrototypicalPoolBasedActiveDyadRanker(plNet, poolProvider, minibatchSize,
-							lengthOfTopRankingToConsider, ratioOfOldInstancesInMinibatch, numberRandomQueriesAtStart, seed);
+							lengthOfTopRankingToConsider, ratioOfOldInstancesInMinibatch, numberRandomQueriesAtStart,
+							seed);
 				} else if (samplingStrategy.equals("random")) {
 					activeRanker = new RandomPoolBasedActiveDyadRanker(plNet, poolProvider, minibatchSize, seed);
 				}
@@ -139,30 +145,37 @@ public class ActiveLearningExperimenter {
 
 				double currentLossIS = 0;
 				double currentLossOOS = 0;
+				double currentTop3Distance = Double.MAX_VALUE;
+				double currentTop5Distance = Double.MAX_VALUE;
+				double currentTop10Distance = Double.MAX_VALUE;
 
 				System.out.println();
 				for (int iteration = 0; iteration < numberQueries; iteration++) {
-					currentLossOOS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData,
-							plNet);
+					DyadRankingDataset predictionsOOS = new DyadRankingDataset(plNet.predict(testData));
 					DyadRankingDataset queriedPairs = new DyadRankingDataset(poolProvider.getQueriedRankings());
+					currentLossOOS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData, predictionsOOS);
 					if(queriedPairs.size()>0) {
+						DyadRankingDataset predictionsIS = new DyadRankingDataset(plNet.predict(queriedPairs));
 					currentLossIS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), queriedPairs,
 							plNet);
 					}
+					currentTop3Distance = DyadRankingLossUtil.computeAverageLoss(new KendallsTauOfTopK(3, 0.5d), testData, predictionsOOS);
+					currentTop5Distance = DyadRankingLossUtil.computeAverageLoss(new KendallsTauOfTopK(5, 0.5d), testData, predictionsOOS);
+					currentTop10Distance = DyadRankingLossUtil.computeAverageLoss(new KendallsTauOfTopK(10, 0.5d), testData, predictionsOOS);
+					
 					System.out.println("removing from pool: " + removeQueriedDyadsFromPool);
 					System.out.println("in sample: " + currentLossIS);
 					Map<String, Object> valueMap = new HashMap<>();
 					valueMap.put("seed", Integer.toString(seed));
 					valueMap.put("query_step", Integer.toString(iteration));
 					valueMap.put("sampling_strategy", samplingStrategy);
-					valueMap.put("train_ratio", Double.toString(trainRatio));
-					valueMap.put("old_data_in_minibatch_ratio", Double.toString(ratioOfOldInstancesInMinibatch));
 					valueMap.put("minibatch_size", Integer.toString(minibatchSize));
 					valueMap.put("score_oos", Double.toString(currentLossOOS));
 					valueMap.put("score_is", Double.toString(currentLossIS));
+					valueMap.put("top_3_tau", Double.toString(currentTop3Distance));
+					valueMap.put("top_5_tau", Double.toString(currentTop5Distance));
+					valueMap.put("top_10_tau", Double.toString(currentTop10Distance));
 					valueMap.put("dataset", datasetName);
-					valueMap.put("top_ranking_length", Integer.toString(lengthOfTopRankingToConsider));
-					valueMap.put("measure", measure);
 					valueMap.put("remove_queried_dyads", removeQueriedDyadsFromPool);
 					valueMap.put("evaluation_date",
 							new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date.from(Instant.now())));
@@ -176,6 +189,9 @@ public class ActiveLearningExperimenter {
 				/* report results */
 				results.put("loss_is", currentLossIS);
 				results.put("loss_oos", currentLossOOS);
+				results.put("t3kt", currentTop3Distance);
+				results.put("t5kt", currentTop5Distance);
+				results.put("t10kt", currentTop10Distance);
 				processor.processResults(results);
 			}
 		});
