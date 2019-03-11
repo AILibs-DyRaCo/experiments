@@ -24,6 +24,7 @@ import jaicore.experiments.IExperimentSetEvaluator;
 import jaicore.ml.dyadranking.activelearning.ActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
+import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRankerV2;
 import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
@@ -127,6 +128,10 @@ public class ActiveLearningExperimenter {
 				}
 				else if (samplingStrategy.equals("UCB")) {
 					activeRanker = new UCBPoolBasedActiveDyadRanker(plNet, poolProvider, seed, numberRandomQueriesAtStart, minibatchSize);
+				}
+				else if (samplingStrategy.equals("prototypical_v2")) {
+					activeRanker = new PrototypicalPoolBasedActiveDyadRankerV2(plNet, poolProvider, minibatchSize,
+							lengthOfTopRankingToConsider, ratioOfOldInstancesInMinibatch, numberRandomQueriesAtStart, seed);
 				}
 				else {
 					throw new IllegalArgumentException("Please choose a valid sampling strategy!");
