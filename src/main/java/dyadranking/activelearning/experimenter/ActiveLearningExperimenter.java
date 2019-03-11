@@ -158,6 +158,7 @@ public class ActiveLearningExperimenter {
 					currentTop10Distance = DyadRankingLossUtil.computeAverageLoss(new KendallsTauOfTopK(10, 0.5d), testData, predictionsOOS);
 					
 					System.out.println("removing from pool: " + removeQueriedDyadsFromPool);
+					System.out.println("in sample: " + currentLossIS);
 					Map<String, Object> valueMap = new HashMap<>();
 					valueMap.put("seed", Integer.toString(seed));
 					valueMap.put("query_step", Integer.toString(iteration));
