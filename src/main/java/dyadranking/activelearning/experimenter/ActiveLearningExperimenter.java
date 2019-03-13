@@ -2,6 +2,7 @@ package dyadranking.activelearning.experimenter;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
@@ -21,6 +22,7 @@ import jaicore.experiments.ExperimentRunner;
 import jaicore.experiments.IExperimentIntermediateResultProcessor;
 import jaicore.experiments.IExperimentSetConfig;
 import jaicore.experiments.IExperimentSetEvaluator;
+import jaicore.ml.core.dataset.IInstance;
 import jaicore.ml.dyadranking.activelearning.ActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
@@ -28,6 +30,7 @@ import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
+import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
 import jaicore.ml.dyadranking.loss.KendallsTauOfTopK;
@@ -76,6 +79,7 @@ public class ActiveLearningExperimenter {
 				String scalingMethod = m.getScalingMethod();
 				boolean transformInstances = Boolean.parseBoolean(m.getTransformInstances());
 				boolean transformAlternatives = Boolean.parseBoolean(m.getTransformAlternatives());
+				int saveRankingInterval = Integer.parseInt(m.getSaveRankingInterval());
 
 				/* initialize learning curve table if not existent */
 				try {
@@ -124,19 +128,23 @@ public class ActiveLearningExperimenter {
 						scaler = new DyadMinMaxScaler();
 					} else if (scalingMethod.equals("unitlength")) {
 						scaler = new DyadUnitIntervalScaler();
-					}
-					else {
-						throw new IllegalArgumentException("The scaling method " + scalingMethod + " is currently not supported!");
+					} else {
+						throw new IllegalArgumentException(
+								"The scaling method " + scalingMethod + " is currently not supported!");
 					}
 
 					if (scaler != null) {
 						scaler.fit(trainData);
-						if(transformInstances) {
-						scaler.transformInstances(trainData);
-						scaler.transformInstances(testData);
+						if (transformInstances) {
+							System.out.println("Transforming instances");
+							scaler.transformInstances(trainData);
+							scaler.transformInstances(testData);
 						}
-						if(transformAlternatives)
-
+						if (transformAlternatives) {
+							System.out.println("Transforming alternatives");
+							scaler.transformAlternatives(trainData);
+							scaler.transformAlternatives(testData);
+						}
 					}
 				}
 
@@ -167,8 +175,26 @@ public class ActiveLearningExperimenter {
 				double currentTop10Distance = Double.MAX_VALUE;
 
 				System.out.println();
-				for (int iteration = 0; iteration < numberQueries; iteration++) {
+				for (int iteration = 1; iteration <= numberQueries; iteration++) {
 					DyadRankingDataset predictionsOOS = new DyadRankingDataset(plNet.predict(testData));
+					
+					// if the iteration 
+					if(iteration % saveRankingInterval == 0) {
+						StringBuilder sb = new StringBuilder();
+						sb.append("./predictions/prediction");
+						sb.append("-");
+						sb.append(samplingStrategy);
+						sb.append("-");
+						sb.append(datasetName);
+						sb.append("-");
+						sb.append(seed);
+						sb.append("-");
+						sb.append(iteration);
+						sb.append(".txt");
+						String filePath = sb.toString();
+						predictionsOOS.serialize(new FileOutputStream(new File(filePath)));
+					}
+					
 					DyadRankingDataset queriedPairs = new DyadRankingDataset(poolProvider.getQueriedRankings());
 					currentLossOOS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData,
 							predictionsOOS);
@@ -203,7 +229,7 @@ public class ActiveLearningExperimenter {
 					adapter.insert(curveTable, valueMap);
 					activeRanker.activelyTrain(1);
 				}
-
+				
 				/* run experiment */
 				Map<String, Object> results = new HashMap<>();
 
