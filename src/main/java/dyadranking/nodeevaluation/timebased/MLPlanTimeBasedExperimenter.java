@@ -32,6 +32,7 @@ import jaicore.ml.WekaUtil;
 import jaicore.ml.cache.ReproducibleInstances;
 import jaicore.planning.hierarchical.algorithms.forwarddecomposition.graphgenerators.tfd.TFDNode;
 import jaicore.search.algorithms.standard.bestfirst.events.EvaluatedSearchSolutionCandidateFoundEvent;
+import jaicore.search.algorithms.standard.bestfirst.events.FValueEvent;
 import jaicore.search.model.travesaltree.Node;
 import weka.classifiers.Classifier;
 import weka.classifiers.evaluation.Evaluation;
@@ -63,8 +64,14 @@ public class MLPlanTimeBasedExperimenter {
 		for (int dataset : config.getOpenMLIds()) {
 			for (long timeout : config.getTimeouts()) {
 				for (int seed : config.getSeeds()) {
+					String table ="";
+					if (config.useDyadRanking())
+						table = "dyadranking_versus_mlplan_approach_5";
+					else
+						table = "dyadranking_versus_mlplan_approach_5_2";
+					
 					MLPLanSolutionLogger logger = new MLPLanSolutionLogger(sqlAdapter, seed, timeout, dataset,
-							"dyadranking_versus_mlplan_2");
+							table);
 
 					ReproducibleInstances data = ReproducibleInstances.fromOpenML(Integer.toString(dataset),
 							"4350e421cdc16404033ef1812ea38c01");
@@ -75,11 +82,11 @@ public class MLPlanTimeBasedExperimenter {
 					MLPlanBuilder builder = new MLPlanBuilder();
 
 					builder.withSearchSpaceConfigFile(
-							new File("conf/automl/searchmodels/weka/weka-all-autoweka.json"));
+							new File("conf/automl/searchmodels/weka/weka-approach-5-autoweka.json"));
 					if (config.useDyadRanking()) {
 						builder = builder.withAutoWEKAConfiguration(false);
 						builder.withPreferredNodeEvaluator(new DyadRankingBasedNodeEvaluator<>(new ComponentLoader(
-								new File("conf/automl/searchmodels/weka/weka-all-autoweka.json"))));
+								new File("conf/automl/searchmodels/weka/weka-approach-5-autoweka.json"))));
 					} else {
 						builder = builder.withAutoWEKAConfiguration();
 					}
@@ -194,11 +201,11 @@ public class MLPlanTimeBasedExperimenter {
 		 */
 		@AllowConcurrentEvents
 		@Subscribe
-		public void listenToHASCOSolution(HASCOSolutionEvent<Double> fValueSolution) {
+		public void listenToHASCOSolution(FValueEvent<Double> fValueSolution) {
 			Duration timeUntilFound = Duration.between(startTime, Instant.now());
 			Map<String, Object> values = new HashMap<>();
 			values.put("timeUntilFound", new Double(timeUntilFound.toMillis()));
-			values.put("scoreOfSolution", fValueSolution.getSolutionCandidate().getScore());
+			values.put("scoreOfSolution", fValueSolution.getfValue());
 			values.put("dataset", this.dataset);
 			values.put("timeout", (double) this.timeout);
 			values.put("isFValue", 1.0d);
