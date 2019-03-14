@@ -3,6 +3,8 @@ package dyadranking.evaluation;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -10,7 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.nd4j.linalg.primitives.Pair;
 
@@ -22,12 +23,16 @@ import jaicore.ml.core.dataset.IInstance;
 import jaicore.ml.dyadranking.Dyad;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
 import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
+import jaicore.ml.dyadranking.util.AbstractDyadScaler;
+import jaicore.ml.dyadranking.util.DyadMinMaxScaler;
 
 public class MarcelLossCalculator {
 
 	private static final int K = 10;
 
-	private static final String filePath = "./Predicted_Rankings_Non_Scaled/prediction-prototypical-MLPlan-Data.txt-1-125.txt";
+	private static final String filePath = "./predictions/prediction-random-MLPlan-Data.txt-18-50.txt";
+
+	private static final String scalerPath = "./scalers/scaler-random-MLPlan-Data.txt-18-.ser";
 
 	private static String dyadTable = "dyad_dataset_approach_5_performance_samples_full";
 
@@ -39,16 +44,46 @@ public class MarcelLossCalculator {
 
 	private static Map<Dyad, Double> cachedDyads = new HashMap<Dyad, Double>();
 
+	private static boolean transformAlternatives = true;
+
 	public static void main(String args[]) {
+		
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		DyadRankingDataset currentPredictions = new DyadRankingDataset();
+
+		// deserialize the scaler used for these predictions
+		AbstractDyadScaler scaler = null;
+		FileInputStream fis;
+		try {
+			fis = new FileInputStream(scalerPath);
+			ObjectInputStream ois = new ObjectInputStream(fis);
+			scaler = (AbstractDyadScaler) ois.readObject();
+			ois.close();
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
 		try {
 			currentPredictions.deserialize(new FileInputStream(new File(filePath)));
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
+		
+		
+		if(scaler instanceof DyadMinMaxScaler) {
+			DyadMinMaxScaler mmscaler = (DyadMinMaxScaler) scaler;
+			if(transformAlternatives)
+				((DyadMinMaxScaler) scaler).untransformAlternatives(currentPredictions);
+		}
+		
 		for (IInstance instance : currentPredictions) {
 
 			// get the String representation that is consistent with the database entry
@@ -79,6 +114,7 @@ public class MarcelLossCalculator {
 				String prefix = "";
 				for (Dyad dyad : drInstance) {
 					// create a String for the SQL query
+					
 					String alternativeFeatureString = dyad.getAlternative().toString();
 					alternativeFeatureString = alternativeFeatureString.replaceAll(",", " ");
 					alternativeFeatureString = alternativeFeatureString.substring(1,
@@ -91,21 +127,26 @@ public class MarcelLossCalculator {
 				}
 				sb.append(")");
 				String allAlternatives = sb.toString();
-//				System.out.println(allAlternatives);
+				System.out.println(allAlternatives);
 				resultsPipelines = adapter.getResultsOfQuery("SELECT pipeline_id, y, score FROM " + dyadTable
 						+ " WHERE dataset = " + datasetID + " AND y IN " + allAlternatives);
 				while (resultsPipelines.next()) {
 					double loss = resultsPipelines.getDouble(3);
 					String serializedY = resultsPipelines.getString(2);
-					System.out.println(datasetID);
-					System.out.println(resultsPipelines.getInt(1));
-					System.out.println("loss: " + loss);
-					System.out.println();
+//					System.out.println(datasetID);
+//					System.out.println(resultsPipelines.getInt(1));
+//					System.out.println("loss: " + loss);
+//					System.out.println();
 
 					double[] yArray = arrayDeserializer.splitAsStream(serializedY).mapToDouble(Double::parseDouble)
 							.toArray();
 					Dyad dyad = new Dyad(instanceFeatureVector, new DenseDoubleVector(yArray));
-
+//					if (transformAlternatives) {
+//						if(scaler == null)
+//							throw new IllegalStateException("No dyad scaler found!");
+//						scaler.transformAlternatives(dyad, new ArrayList<Integer>());
+//					}
+					System.out.println(dyad);
 					cachedDyads.put(dyad, loss);
 				}
 
@@ -113,12 +154,14 @@ public class MarcelLossCalculator {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-			for(IInstance inst : currentPredictions) {
+			for (IInstance inst : currentPredictions) {
 				IDyadRankingInstance drPredictedInstance = (IDyadRankingInstance) inst;
 				System.out.println("\nNew ranking");
-				for(Dyad dyad : drPredictedInstance)
-					System.out.println("loss: " + cachedDyads.get(dyad));
-				
+				for (Dyad dyad : drPredictedInstance) {
+					if(!cachedDyads.containsKey(dyad))
+						System.out.println(dyad.getAlternative());
+					
+				}
 			}
 		}
 

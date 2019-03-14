@@ -3,6 +3,7 @@ package dyadranking.activelearning.experimenter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
@@ -22,7 +23,6 @@ import jaicore.experiments.ExperimentRunner;
 import jaicore.experiments.IExperimentIntermediateResultProcessor;
 import jaicore.experiments.IExperimentSetConfig;
 import jaicore.experiments.IExperimentSetEvaluator;
-import jaicore.ml.core.dataset.IInstance;
 import jaicore.ml.dyadranking.activelearning.ActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
@@ -30,7 +30,6 @@ import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
-import jaicore.ml.dyadranking.dataset.IDyadRankingInstance;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
 import jaicore.ml.dyadranking.loss.KendallsTauOfTopK;
@@ -144,6 +143,27 @@ public class ActiveLearningExperimenter {
 							System.out.println("Transforming alternatives");
 							scaler.transformAlternatives(trainData);
 							scaler.transformAlternatives(testData);
+						}
+						try {
+							StringBuilder sb = new StringBuilder();
+							sb.append("./scalers/scaler");
+							sb.append("-");
+							sb.append(samplingStrategy);
+							sb.append("-");
+							sb.append(datasetName);
+							sb.append("-");
+							sb.append(seed);
+							sb.append("-");
+							sb.append(".ser");
+							String scalerFilePath = sb.toString();
+					        FileOutputStream fileOut =
+					                new FileOutputStream(scalerFilePath);
+					                ObjectOutputStream out = new ObjectOutputStream(fileOut);
+					                out.writeObject(scaler);
+					                out.close();
+					                fileOut.close();
+						} catch(Exception e) {
+							
 						}
 					}
 				}
