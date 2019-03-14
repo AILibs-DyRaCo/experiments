@@ -150,3 +150,17 @@ task jsonConfigBasedPLNetTrainer(type: Jar) {
             .collect { it.isDirectory() ? it : zipTree(it) } }
     with jar
 }
+
+task jsonConfigCleaner(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': 'dyadranking.performance.JSONConfigCleaner'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'jsonConfigCleaner'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}

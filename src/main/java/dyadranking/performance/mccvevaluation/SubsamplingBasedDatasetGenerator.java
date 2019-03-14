@@ -1,4 +1,4 @@
-package dyadranking.performance;
+package dyadranking.performance.mccvevaluation;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -52,77 +52,91 @@ public class SubsamplingBasedDatasetGenerator {
 	private static List<Integer> allDatasets = Arrays.asList(44, 1462, 1063, 1480, 151, 1038, 333, 312, 334, 1510, 335,
 			50, 31, 37, 1494, 1493, 1471, 1491, 1050, 1489, 1467, 1049, 3, 1487, 1068, 1046, 1464, 1067, 1504);
 
-	private static List<Integer> allSubsamplingSizes = Arrays.asList(100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000,
-			25000, 50000, 75000, 100000, 250000, 500000);
+	private static List<Integer> allSubsamplingSizes = Arrays.asList(100, 250, 500, 750, 1000, 2500);
 
 	public static void main(String[] args) throws Exception {
+
+		List<List<Integer>> trainDatasets = new ArrayList<>(10);
+		List<List<Integer>> testDatasets = new ArrayList<>(10);
+
+		for (int i = 0; i < 10; i++) {
+			int splitIndex = (int) Math.floor(0.7d * allDatasets.size());
+			Collections.sort(allDatasets);
+			Collections.shuffle(allDatasets, new Random(i));
+			trainDatasets.add(allDatasets.subList(0, splitIndex));
+			testDatasets.add( allDatasets.subList(splitIndex, allDatasets.size()));
+		}
+		List<Integer> copiedDatasets = new ArrayList<>(allDatasets);
+		Collections.shuffle(copiedDatasets, random);
+
 		for (int subsamplingSize : allSubsamplingSizes) {
 			SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
-			List<List<IDyadRankingInstance>> allLists = new ArrayList<>();
+			
 
-			List<Integer> copiedDatasets = new ArrayList<>(allDatasets);
-			Collections.shuffle(copiedDatasets);
+			for (int i = 0; i < 10; i++) {
+List<List<IDyadRankingInstance>> allLists = new ArrayList<>();
+				List<Integer> trainDS = trainDatasets.get(i);
+				List<Integer> testDS = testDatasets.get(i);
+				JSONObject json = new JSONObject();
+				json.put("trainDatasets", trainDS);
+				json.put("testDatasets", testDS);
 
-			int testSplitIndex = (int) Math.floor(0.7d * copiedDatasets.size());
+				File jsonConfigFolder = new File("jsonConfigsMCCV");
+				if (!jsonConfigFolder.exists()) {
+					jsonConfigFolder.mkdir();
+				}
 
-			List<Integer> trainDS = copiedDatasets.subList(0, testSplitIndex);
-			List<Integer> testDS = copiedDatasets.subList(testSplitIndex, copiedDatasets.size());
-			JSONObject json = new JSONObject();
-			json.put("trainDatasets", trainDS);
-			json.put("testDatasets", testDS);
+				File datasetFolder = new File("datasetsMCCV");
+				if (!datasetFolder.exists()) {
+					datasetFolder.mkdir();
+				}
 
-			File jsonConfigFolder = new File("jsonConfigs");
-			if (!jsonConfigFolder.exists()) {
-				jsonConfigFolder.mkdir();
+				File normalizeFolder = new File("normalizationSerializationsMCCV");
+				if (!normalizeFolder.exists()) {
+					normalizeFolder.mkdir();
+				}
+
+				File normalizeOut = new File(
+						"normalizationSerializationsMCCV/minmax_" + subsamplingSize + "_" + i + ".ser");
+
+				File datasetWithSerOut = new File(
+						"datasetsMCCV/trainDS_with_norm_" + subsamplingSize + "_" + i + ".dataset");
+				File datasetOut = new File("datasetsMCCV/trainDS_" + subsamplingSize + "_" + i + ".dataset");
+
+				json.put("datasetPath", datasetOut.getAbsolutePath());
+				json.put("datasetWithNorm", datasetWithSerOut.getAbsolutePath());
+				json.put("normalizeSerPath", normalizeOut.getAbsolutePath());
+				json.put("subsamplingSize", subsamplingSize);
+				json.put("mccvIndex", i);
+
+				System.out.println("Creating dataset");
+
+				for (int datasetId : trainDS) {
+					allLists.add(getSubsamplesForDatasetId(subsamplingSize, datasetId, adapter));
+				}
+				List<IDyadRankingInstance> completeRanking = allLists.stream().flatMap(List::stream)
+						.collect(Collectors.toList());
+				Collections.shuffle(completeRanking, random);
+				DyadRankingDataset dataset = new DyadRankingDataset(completeRanking);
+				dataset.serialize(new FileOutputStream(datasetOut));
+
+				AbstractDyadScaler normalizer = new DyadMinMaxScaler();
+				normalizer.fit(dataset);
+				normalizer.transformAlternatives(dataset);
+
+				dataset.serialize(new FileOutputStream(datasetWithSerOut));
+
+				try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(normalizeOut))) {
+					oos.writeObject(normalizer);
+				} catch (IOException e) {
+					System.err.println("Failed to serialize normalizer for " + subsamplingSize);
+				}
+
+				FileWriter writer = new FileWriter(new File("jsonConfigsMCCV/" + subsamplingSize + "_" + i + ".json"));
+				writer.write(json.toJSONString());
+				writer.flush();
+				writer.close();
 			}
-
-			File datasetFolder = new File("datasets");
-			if (!datasetFolder.exists()) {
-				datasetFolder.mkdir();
-			}
-
-			File normalizeFolder = new File("normalizationSerializations");
-			if (!normalizeFolder.exists()) {
-				normalizeFolder.mkdir();
-			}
-
-			File normalizeOut = new File("normalizationSerializations/minmax_" + subsamplingSize + ".ser");
-
-			File datasetWithSerOut = new File("datasets/trainDS_with_norm_" + subsamplingSize + ".dataset");
-			File datasetOut = new File("datasets/trainDS_" + subsamplingSize + ".dataset");
-
-			json.put("datasetPath", datasetOut.getAbsolutePath());
-			json.put("datasetWithNorm", datasetWithSerOut.getAbsolutePath());
-			json.put("normalizeSerPath", normalizeOut.getAbsolutePath());
-			json.put("subsamplingSize", subsamplingSize);
-
-			System.out.println("Creating dataset");
-
-			for (int datasetId : trainDS) {
-				allLists.add(getSubsamplesForDatasetId(subsamplingSize, datasetId, adapter));
-			}
-			List<IDyadRankingInstance> completeRanking = allLists.stream().flatMap(List::stream)
-					.collect(Collectors.toList());
-			Collections.shuffle(completeRanking, random);
-			DyadRankingDataset dataset = new DyadRankingDataset(completeRanking);
-			dataset.serialize(new FileOutputStream(datasetOut));
-
-			AbstractDyadScaler normalizer = new DyadMinMaxScaler();
-			normalizer.fit(dataset);
-			normalizer.transformAlternatives(dataset);
-
-			dataset.serialize(new FileOutputStream(datasetWithSerOut));
-
-			try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(normalizeOut))) {
-				oos.writeObject(normalizer);
-			} catch (IOException e) {
-				System.err.println("Failed to serialize normalizer for " + subsamplingSize);
-			}
-
-			FileWriter writer = new FileWriter(new File("jsonConfigs/" + subsamplingSize + ".json"));
-			writer.write(json.toJSONString());
-			writer.flush();
-			writer.close();
 		}
 
 	}

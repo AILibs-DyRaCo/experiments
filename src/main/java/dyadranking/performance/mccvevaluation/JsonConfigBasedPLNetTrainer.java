@@ -1,4 +1,4 @@
-package dyadranking.performance;
+package dyadranking.performance.mccvevaluation;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,7 +42,7 @@ public class JsonConfigBasedPLNetTrainer {
 			System.out.println("Reading " + potentiallyConfig.getName());
 			JSONObject jsonObject = new ObjectMapper().readValue(potentiallyConfig, JSONObject.class);
 
-			if (jsonObject.containsKey("rankerWithSer")) {
+			if (jsonObject.containsKey("rankerWithSer") || jsonObject.containsKey("ranker")) {
 				System.out.println("Ranker was already trained on this dataset");
 				// if (new File((String) jsonObject.get("rankerWithSer")).exists())
 				continue;
@@ -53,19 +53,21 @@ public class JsonConfigBasedPLNetTrainer {
 			String datasetWithNormalizationPath = (String) jsonObject.get("datasetWithNorm");
 
 			int subsamplingSize = (int) jsonObject.get("subsamplingSize");
+			
+			int splitIndex = (int) jsonObject.get("mccvIndex");
 
 			System.out.println("Found the following datasets: " + datasetPath + ", " + datasetWithNormalizationPath);
 
-			File rankerOutFolder = new File("rankers");
+			File rankerOutFolder = new File("rankersMCCV");
 			if (!rankerOutFolder.exists()) {
 				rankerOutFolder.mkdir();
 			}
 
 			System.out.println("Updating json");
 
-			jsonObject.put("ranker", new File("rankers/ranker_" + subsamplingSize + ".zip").getAbsolutePath());
+			jsonObject.put("ranker", new File("rankersMCCV/ranker_" + subsamplingSize + "_"+ splitIndex+".zip").getAbsolutePath());
 			jsonObject.put("rankerWithSer",
-					new File("rankers/ranker_with_norm_" + subsamplingSize + ".zip").getAbsolutePath());
+					new File("rankersMCCV/ranker_with_norm_" + subsamplingSize + "_"+ splitIndex+".zip").getAbsolutePath());
 
 			potentiallyConfig.delete();
 			try (FileWriter writer = new FileWriter(potentiallyConfig)) {
@@ -83,7 +85,7 @@ public class JsonConfigBasedPLNetTrainer {
 			dataset.deserialize(new FileInputStream(new File(datasetPath)));
 			ranker.train(dataset);
 			System.out.println("Finished Training non-normalized ranker...");
-			ranker.saveModelToFile("rankers/ranker_" + subsamplingSize);
+			ranker.saveModelToFile("rankersMCCV/ranker_" + subsamplingSize +"_"+ splitIndex);
 
 			dataset = new DyadRankingDataset();
 			ranker = new PLNetDyadRanker();
@@ -93,7 +95,7 @@ public class JsonConfigBasedPLNetTrainer {
 			dataset.deserialize(new FileInputStream(new File(datasetWithNormalizationPath)));
 			ranker.train(dataset);
 			System.out.println("Finished training normalized ranker...");
-			ranker.saveModelToFile("rankers/ranker_with_norm_" + subsamplingSize);
+			ranker.saveModelToFile("rankersMCCV/ranker_with_norm_" + subsamplingSize+ "_"+ splitIndex);
 		}
 	}
 }

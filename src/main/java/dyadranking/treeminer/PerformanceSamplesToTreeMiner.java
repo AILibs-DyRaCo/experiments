@@ -2,11 +2,7 @@ package dyadranking.treeminer;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -24,7 +20,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import de.upb.crc901.mlplan.metamining.pipelinecharacterizing.WEKAPipelineCharacterizer;
 import dyadranking.sql.SQLUtils;
-import dyadranking.zeroshotnode.evaluations.MlPlanPerformanceTester;
 import hasco.model.ComponentInstance;
 import hasco.serialization.ComponentLoader;
 import hasco.serialization.HASCOJacksonModule;
@@ -46,11 +41,11 @@ public class PerformanceSamplesToTreeMiner {
 
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		pattern_size = Integer.parseInt(args[4]);
-		String resultTableName = "dyad_dataset_support_" + pattern_size;
+		String resultTableName = "dyad_dataset_approach_5_treemining_support_" + pattern_size;
 
 		ObjectMapper mapper = new ObjectMapper();
-		
-		File jsonFile = new File ("weka/weka-all-autoweka.json");
+
+		File jsonFile = new File("src/main/resources/weka/weka-all-autoweka.json");
 		mapper.registerModule(new HASCOJacksonModule(new ComponentLoader(jsonFile).getComponents()));
 
 		ComponentLoader loader = new ComponentLoader(jsonFile);
@@ -62,12 +57,11 @@ public class PerformanceSamplesToTreeMiner {
 
 		// select the average score for a distinct pipeline on a dataset
 		ResultSet pipelinesGroupedByDataset = adapter.getResultsOfQuery(
-				"SELECT COUNT(*) AS 'count', composition, AVG(score) AS 'AVG_SCORE', JSON_EXTRACT(train_trajectory, '$[0].inputs.id') AS 'dataset' from performance_samples GROUP BY composition, dataset HAVING count=10 ");
-
+				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers` NATURAL JOIN draco_pipelines_5_classifiers WHERE loss IS NOT NULL");
 		while (pipelinesGroupedByDataset.next()) {
-			String composition = pipelinesGroupedByDataset.getString(2);
+			String composition = pipelinesGroupedByDataset.getString(1);
 			double avgScore = pipelinesGroupedByDataset.getDouble(3);
-			int dataset = Integer.parseInt(pipelinesGroupedByDataset.getString(4).replaceAll("\"", ""));
+			int dataset = pipelinesGroupedByDataset.getInt(2);
 
 			// deserialize component-instance
 			ComponentInstance cI = mapper.readValue(composition, ComponentInstance.class);
@@ -96,8 +90,8 @@ public class PerformanceSamplesToTreeMiner {
 		if (!hasPerformanceTable) {
 			adapter.update(
 					"CREATE TABLE " + newTableName + " (\r\n" + " `id` int(10) NOT NULL AUTO_INCREMENT,\r\n"
-							+ " `dataset` TEXT NOT NULL, \r \n" + " `score` double NOT NULL,\r\n"
-							+ " `y` TEXT, \r \n" + " PRIMARY KEY (`id`)\r\n"
+							+ " `dataset` TEXT NOT NULL, \r \n" + " `score` double NOT NULL,\r\n" + " `y` TEXT, \r \n"
+							+ " PRIMARY KEY (`id`)\r\n"
 							+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
 					new ArrayList<>());
 		}
@@ -123,7 +117,7 @@ public class PerformanceSamplesToTreeMiner {
 			ObjectMapper mapper)
 			throws SQLException, JsonParseException, JsonMappingException, IOException, InterruptedException {
 		// selects all distinct pipelines
-		ResultSet res = adapter.getResultsOfQuery("SELECT DISTINCT composition from performance_samples");
+		ResultSet res = adapter.getResultsOfQuery("SELECT DISTINCT composition from draco_pipelines_5_classifiers");
 
 		List<ComponentInstance> instances = new ArrayList<>();
 
@@ -135,6 +129,7 @@ public class PerformanceSamplesToTreeMiner {
 		}
 		// trains the treeminer
 		WEKAPipelineCharacterizer metaLearner = new WEKAPipelineCharacterizer(loader.getParamConfigs());
+		System.out.println("Patterns for support "+ pattern_size);
 		metaLearner.setMinSupport(pattern_size);
 		metaLearner.build(instances);
 		System.out.println(metaLearner.getFoundPipelinePatterns().size());

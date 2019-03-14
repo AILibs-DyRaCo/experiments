@@ -24,3 +24,7 @@ hs_err_pid*
 /bin/
 .gradle
 build
+*.ser
+jsonConfigsMCCV
+jsonConfigs
+*.dataset

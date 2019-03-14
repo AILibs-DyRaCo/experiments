@@ -1,4 +1,4 @@
-package dyadranking.performance;
+package dyadranking.performance.mccvevaluation;
 
 import java.util.Comparator;
 
