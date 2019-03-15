@@ -28,6 +28,7 @@ import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
+import jaicore.ml.dyadranking.algorithm.IPLNetDyadRankerConfiguration;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
@@ -79,6 +80,7 @@ public class ActiveLearningExperimenter {
 				boolean transformInstances = Boolean.parseBoolean(m.getTransformInstances());
 				boolean transformAlternatives = Boolean.parseBoolean(m.getTransformAlternatives());
 				int saveRankingInterval = Integer.parseInt(m.getSaveRankingInterval());
+				boolean saveScalers = Boolean.parseBoolean(m.getSaveScalers());
 
 				/* initialize learning curve table if not existent */
 				try {
@@ -144,26 +146,27 @@ public class ActiveLearningExperimenter {
 							scaler.transformAlternatives(trainData);
 							scaler.transformAlternatives(testData);
 						}
-						try {
-							StringBuilder sb = new StringBuilder();
-							sb.append("./scalers/scaler");
-							sb.append("-");
-							sb.append(samplingStrategy);
-							sb.append("-");
-							sb.append(datasetName);
-							sb.append("-");
-							sb.append(seed);
-							sb.append("-");
-							sb.append(".ser");
-							String scalerFilePath = sb.toString();
-					        FileOutputStream fileOut =
-					                new FileOutputStream(scalerFilePath);
-					                ObjectOutputStream out = new ObjectOutputStream(fileOut);
-					                out.writeObject(scaler);
-					                out.close();
-					                fileOut.close();
-						} catch(Exception e) {
-							
+						if (saveScalers) {
+							try {
+								StringBuilder sb = new StringBuilder();
+								sb.append("./scalers/scaler");
+								sb.append("-");
+								sb.append(samplingStrategy);
+								sb.append("-");
+								sb.append(datasetName);
+								sb.append("-");
+								sb.append(seed);
+								sb.append("-");
+								sb.append(".ser");
+								String scalerFilePath = sb.toString();
+								FileOutputStream fileOut = new FileOutputStream(scalerFilePath);
+								ObjectOutputStream out = new ObjectOutputStream(fileOut);
+								out.writeObject(scaler);
+								out.close();
+								fileOut.close();
+							} catch (Exception e) {
+
+							}
 						}
 					}
 				}
@@ -173,6 +176,7 @@ public class ActiveLearningExperimenter {
 				System.out.println("test: " + testData.size());
 				poolProvider.setRemoveDyadsWhenQueried(removeQueriedDyadsFromPool);
 				PLNetDyadRanker plNet = new PLNetDyadRanker();
+				plNet.getConfiguration().setProperty(IPLNetDyadRankerConfiguration.K_PLNET_SEED, Integer.toString(seed));
 				System.out.println(plNet.getConfiguration());
 				ActiveDyadRanker activeRanker = null;
 				if (samplingStrategy.equals("prototypical")) {
@@ -197,9 +201,9 @@ public class ActiveLearningExperimenter {
 				System.out.println();
 				for (int iteration = 1; iteration <= numberQueries; iteration++) {
 					DyadRankingDataset predictionsOOS = new DyadRankingDataset(plNet.predict(testData));
-					
-					// if the iteration 
-					if(iteration % saveRankingInterval == 0) {
+
+					// if the iteration
+					if (iteration % saveRankingInterval == 0) {
 						StringBuilder sb = new StringBuilder();
 						sb.append("./predictions/prediction");
 						sb.append("-");
@@ -214,7 +218,7 @@ public class ActiveLearningExperimenter {
 						String filePath = sb.toString();
 						predictionsOOS.serialize(new FileOutputStream(new File(filePath)));
 					}
-					
+
 					DyadRankingDataset queriedPairs = new DyadRankingDataset(poolProvider.getQueriedRankings());
 					currentLossOOS = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(), testData,
 							predictionsOOS);
@@ -249,7 +253,7 @@ public class ActiveLearningExperimenter {
 					adapter.insert(curveTable, valueMap);
 					activeRanker.activelyTrain(1);
 				}
-				
+
 				/* run experiment */
 				Map<String, Object> results = new HashMap<>();
 
