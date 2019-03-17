@@ -23,6 +23,11 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public static final String LEARNING_CURVE_TABLENAME = "learning_curve_tablename";
 	public static final String MEASURES = "measures";
 	public static final String NUMBER_RANDOM_QUERIES_AT_START = "number_random_queries_at_start";
+	public static final String TRANSFORM_INSTANCES = "transform_instances";
+	public static final String TRANSFORM_ALTERNATIVES = "transform_alternatives";
+	public static final String SCALING_METHOD = "scaling_method";
+	public static final String SAVE_RANKING_INTERVAL = "save_ranking_interval";
+	public static final String SAVE_SCALERS = "save_scalers";
 
 	
 	@Key(SAMPLING_STRATEGIES)
@@ -64,4 +69,20 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	
 	@Key(NUMBER_RANDOM_QUERIES_AT_START)
 	public String getNumberRandomQueriesAtStart();
+	
+	@Key(TRANSFORM_INSTANCES)
+	public String getTransformInstances();
+	
+	@Key(TRANSFORM_ALTERNATIVES)
+	public String getTransformAlternatives();
+
+	@Key(SCALING_METHOD)
+	public String getScalingMethod();
+
+	@Key(SAVE_RANKING_INTERVAL)
+	public String getSaveRankingInterval();
+	
+	@Key(SAVE_SCALERS)
+	@DefaultValue("true")
+	public String getSaveScalers();
 }
