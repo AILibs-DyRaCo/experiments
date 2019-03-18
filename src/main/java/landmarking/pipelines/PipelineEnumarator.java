@@ -35,9 +35,9 @@ import weka.core.Instances;
 
 public class PipelineEnumarator {
 
-	private static int NUMBER_COMPLETIONS = 5;
+	private static int NUMBER_COMPLETIONS = 100;
 
-	private static String DB_TABLE_NAME = "draco_pipelines";
+	private static String DB_TABLE_NAME = "draco_pipelines_5_classifiers_with_SMO";
 	
 	private static String DATASET_PATH = "../experiments/datasets/toydataset.arff";
 
@@ -103,6 +103,8 @@ public class PipelineEnumarator {
 			Instances data = new Instances(new FileReader(new File(DATASET_PATH)));
 			data.setClassIndex(data.numAttributes()-1);
 			
+			System.out.println(data);
+			
 			MLPlanBuilder builder = new MLPlanBuilder();
 			builder.withAutoWEKAConfiguration();
 			Collection<Component> components = new ArrayList<Component>(builder.getComponents());
@@ -113,10 +115,18 @@ public class PipelineEnumarator {
 			HashMap<String, Component> searchers = new HashMap<String, Component>();
 			Component pipelineComponent = null;
 			Component attributeSelectionComponent = null;
+			Component smoComponent = null;
+			List<Component> kernelFunctions = new ArrayList<Component>();
 
 			for (Component component : components) {
-				if (component.getName().contains("classifier"))
+				if (component.getName().contains("classifier")) {
+					if(component.getName().contains("functions.supportVector"))
+						kernelFunctions.add(component);
+					if(component.getName().contains("SMO"))
+						smoComponent = component;
 					classifiers.add(component);
+					
+				}
 				if (component.getProvidedInterfaces().contains("evaluator"))
 					evaluators.put(component.getName(), component);
 				if (component.getProvidedInterfaces().contains("searcher"))
@@ -167,25 +177,50 @@ public class PipelineEnumarator {
 			System.out.println("\nLegal Pairs:");
 			for (Pair<Component, Component> pair : evaluatorSearcherPairs)
 				System.out.println(pair.toString());
-
-			List<Collection<Component>> allPipelineCombinations = new ArrayList<Collection<Component>>();
-			for (Component classifier : classifiers) {
-				ArrayList<Component> onlyClassifier = new ArrayList<Component>();
-				onlyClassifier.add(classifier);
-				onlyClassifier.add(pipelineComponent);
-				allPipelineCombinations.add(onlyClassifier);
+			System.out.println("\nKernel Functions:");
+			for (Component comp : kernelFunctions)
+				System.out.println(comp.toString());
+			System.out.println("\nSMO:");
+			System.out.println(smoComponent);
+			
+			List<Collection<Component>> smoCombinations = new ArrayList<Collection<Component>>();		
+			for(Component kernel : kernelFunctions) {
+				ArrayList<Component> onlySMO = new ArrayList<Component>();
+				onlySMO.add(kernel);
+				onlySMO.add(smoComponent);
+				smoCombinations.add(onlySMO);
+//				onlySMO.add(pipelineComponent);
+//				onlySMO.add(attributeSelectionComponent);
 				for (Pair<Component, Component> pair : evaluatorSearcherPairs) {
 					ArrayList<Component> preprocessorClassifierCombination = new ArrayList<Component>();
-					preprocessorClassifierCombination.add(classifier);
+					preprocessorClassifierCombination.add(smoComponent);
+					preprocessorClassifierCombination.add(kernel);
 					preprocessorClassifierCombination.add(pair.getFirst());
 					preprocessorClassifierCombination.add(pair.getSecond());
 					preprocessorClassifierCombination.add(pipelineComponent);
 					preprocessorClassifierCombination.add(attributeSelectionComponent);
-					allPipelineCombinations.add(preprocessorClassifierCombination);
+					smoCombinations.add(preprocessorClassifierCombination);
 				}
 			}
 
-			for (Collection<Component> currentComponents : allPipelineCombinations) {
+//			List<Collection<Component>> allPipelineCombinations = new ArrayList<Collection<Component>>();
+//			for (Component classifier : classifiers) {
+//				ArrayList<Component> onlyClassifier = new ArrayList<Component>();
+//				onlyClassifier.add(classifier);
+//				onlyClassifier.add(pipelineComponent);
+//				allPipelineCombinations.add(onlyClassifier);
+//				for (Pair<Component, Component> pair : evaluatorSearcherPairs) {
+//					ArrayList<Component> preprocessorClassifierCombination = new ArrayList<Component>();
+//					preprocessorClassifierCombination.add(classifier);
+//					preprocessorClassifierCombination.add(pair.getFirst());
+//					preprocessorClassifierCombination.add(pair.getSecond());
+//					preprocessorClassifierCombination.add(pipelineComponent);
+//					preprocessorClassifierCombination.add(attributeSelectionComponent);
+//					allPipelineCombinations.add(preprocessorClassifierCombination);
+//				}
+//			}
+
+			for (Collection<Component> currentComponents : smoCombinations) {
 				int numExceptions = 0;
 				MLPlanBuilder builder1 = new MLPlanBuilder();
 				try {
@@ -205,7 +240,7 @@ public class PipelineEnumarator {
 				int completions = 0;
 				System.out.println("\n\nRandom completions for " + builder1.getComponents() + " with "
 						+ repetitions + "repetitions:");
-				while (completions < repetitions && rs.hasNext() && numExceptions < 70) {
+				while (completions < repetitions && rs.hasNext() && numExceptions < 150) {
 					try {
 						GraphSearchSolutionCandidateFoundEvent<?, ?, ?> ev = (GraphSearchSolutionCandidateFoundEvent<?, ?, ?>) rs.nextWithException();
 						SearchGraphPath sgp = ev.getSolutionCandidate();
