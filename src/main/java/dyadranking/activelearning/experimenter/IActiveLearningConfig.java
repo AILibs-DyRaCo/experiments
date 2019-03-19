@@ -28,6 +28,7 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	public static final String SCALING_METHOD = "scaling_method";
 	public static final String SAVE_RANKING_INTERVAL = "save_ranking_interval";
 	public static final String SAVE_SCALERS = "save_scalers";
+	public static final String NUM_CLUSTERS = "num_clusters";
 
 	
 	@Key(SAMPLING_STRATEGIES)
@@ -85,4 +86,9 @@ public interface IActiveLearningConfig extends IExperimentSetConfig {
 	@Key(SAVE_SCALERS)
 	@DefaultValue("true")
 	public String getSaveScalers();
+	
+	@Key(NUM_CLUSTERS)
+	@DefaultValue("5")
+	public String getNumClusters();
+	
 }

@@ -24,9 +24,9 @@ import jaicore.experiments.IExperimentIntermediateResultProcessor;
 import jaicore.experiments.IExperimentSetConfig;
 import jaicore.experiments.IExperimentSetEvaluator;
 import jaicore.ml.dyadranking.activelearning.ActiveDyadRanker;
+import jaicore.ml.dyadranking.activelearning.ConfidenceIntervalClusteringBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.DyadDatasetPoolProvider;
 import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRanker;
-import jaicore.ml.dyadranking.activelearning.PrototypicalPoolBasedActiveDyadRankerV2;
 import jaicore.ml.dyadranking.activelearning.RandomPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.activelearning.UCBPoolBasedActiveDyadRanker;
 import jaicore.ml.dyadranking.algorithm.IPLNetDyadRankerConfiguration;
@@ -39,6 +39,8 @@ import jaicore.ml.dyadranking.util.AbstractDyadScaler;
 import jaicore.ml.dyadranking.util.DyadMinMaxScaler;
 import jaicore.ml.dyadranking.util.DyadStandardScaler;
 import jaicore.ml.dyadranking.util.DyadUnitIntervalScaler;
+import weka.clusterers.HierarchicalClusterer;
+import weka.clusterers.SimpleKMeans;
 
 public class ActiveLearningExperimenter {
 
@@ -82,6 +84,7 @@ public class ActiveLearningExperimenter {
 				boolean transformAlternatives = Boolean.parseBoolean(m.getTransformAlternatives());
 				int saveRankingInterval = Integer.parseInt(m.getSaveRankingInterval());
 				boolean saveScalers = Boolean.parseBoolean(m.getSaveScalers());
+				int numClusters = Integer.parseInt(m.getNumClusters());
 
 				/* initialize learning curve table if not existent */
 				try {
@@ -177,7 +180,8 @@ public class ActiveLearningExperimenter {
 				System.out.println("test: " + testData.size());
 				poolProvider.setRemoveDyadsWhenQueried(removeQueriedDyadsFromPool);
 				PLNetDyadRanker plNet = new PLNetDyadRanker();
-				plNet.getConfiguration().setProperty(IPLNetDyadRankerConfiguration.K_PLNET_SEED, Integer.toString(seed));
+				plNet.getConfiguration().setProperty(IPLNetDyadRankerConfiguration.K_PLNET_SEED,
+						Integer.toString(seed));
 				System.out.println(plNet.getConfiguration());
 				ActiveDyadRanker activeRanker = null;
 				if (samplingStrategy.equals("prototypical")) {
@@ -186,15 +190,24 @@ public class ActiveLearningExperimenter {
 							seed);
 				} else if (samplingStrategy.equals("random")) {
 					activeRanker = new RandomPoolBasedActiveDyadRanker(plNet, poolProvider, minibatchSize, seed);
-				}
-				else if (samplingStrategy.equals("UCB")) {
-					activeRanker = new UCBPoolBasedActiveDyadRanker(plNet, poolProvider, seed, numberRandomQueriesAtStart, minibatchSize);
-				}
-				else if (samplingStrategy.equals("prototypical_v2")) {
-					activeRanker = new PrototypicalPoolBasedActiveDyadRankerV2(plNet, poolProvider, minibatchSize,
-							lengthOfTopRankingToConsider, ratioOfOldInstancesInMinibatch, numberRandomQueriesAtStart, seed);
-				}
-				else {
+				} else if (samplingStrategy.equals("UCB")) {
+					activeRanker = new UCBPoolBasedActiveDyadRanker(plNet, poolProvider, seed,
+							numberRandomQueriesAtStart, minibatchSize);
+//					}
+//					else if (samplingStrategy.equals("prototypical_v2")) {
+//						activeRanker = new PrototypicalPoolBasedActiveDyadRankerV2(plNet, poolProvider, minibatchSize,
+					// }
+				} else if (samplingStrategy.equals("clustering_kmeans")) {
+					SimpleKMeans skm = new SimpleKMeans();
+					skm.setNumClusters(numClusters);
+					activeRanker = new ConfidenceIntervalClusteringBasedActiveDyadRanker(plNet, poolProvider, seed,
+							numberRandomQueriesAtStart, minibatchSize, skm);
+				} else if (samplingStrategy.equals("clustering_hierarchical")) {
+					HierarchicalClusterer hc = new HierarchicalClusterer();
+					hc.setNumClusters(numClusters);
+					activeRanker = new ConfidenceIntervalClusteringBasedActiveDyadRanker(plNet, poolProvider, seed,
+							numberRandomQueriesAtStart, minibatchSize, hc);
+				} else {
 					throw new IllegalArgumentException("Please choose a valid sampling strategy!");
 				}
 
