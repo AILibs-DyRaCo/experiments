@@ -282,6 +282,8 @@ public class ActiveLearningExperimenter {
 				results.put("t3kt", currentTop3Distance);
 				results.put("t5kt", currentTop5Distance);
 				results.put("t10kt", currentTop10Distance);
+				System.out.println("overall samples " + samplingStrategy + ": " + poolProvider.getNumberQueries());
+				System.out.println("distinct samples " + samplingStrategy + ": " + poolProvider.getQueriedRankings().size());
 				processor.processResults(results);
 			}
 		});

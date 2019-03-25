@@ -152,7 +152,7 @@ public class DyadDatasetGeneratorDoubleLandmarkers {
 		}
 		System.out.println(ds);
 		try {
-			FileOutputStream fos = new FileOutputStream(new File("landmarking_data_v114.txt"));
+			FileOutputStream fos = new FileOutputStream(new File("double_landmarking_dataset.txt"));
 			ds.serialize(fos);
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
