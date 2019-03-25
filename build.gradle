@@ -53,7 +53,7 @@ dependencies {
 task datasetGenJar(type: Jar) {
 	zip64 = true
     manifest {
-        attributes 'Main-Class': ' dyadranking.performance.DyadDatasetGenerator'
+        attributes 'Main-Class': 'dyadranking.experiments.helena.WekaDyadRankingSimpleEvaluationExperimenter'
     }
     destinationDir = file("${projectDir}")
     baseName = 'datasetGen'
@@ -64,3 +64,16 @@ task datasetGenJar(type: Jar) {
     with jar
 }
 
+task partialpipelinejar(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': 'dyadranking.experiments.partialpipelineranking.WekaDyadRankingSimpleEvaluationExperimenter'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'dyadmlplaninit'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}

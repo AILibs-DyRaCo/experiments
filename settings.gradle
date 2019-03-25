@@ -17,5 +17,5 @@ include 'services:webservice'
 
 rootProject.name = 'draco-experiments'
 
-includeBuild "../AILibs"
+includeBuild "../AILibs-dyraco"
 

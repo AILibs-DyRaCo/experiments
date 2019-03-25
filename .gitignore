@@ -24,3 +24,7 @@ hs_err_pid*
 /bin/
 .gradle
 build
+/.classpath
+/.project
+
+!conf/dyadranking/final_plnet_minmax.zip
