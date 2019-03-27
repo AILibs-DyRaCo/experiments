@@ -4,7 +4,7 @@ import org.aeonbits.owner.Config.Sources;
 
 import jaicore.ml.experiments.IMultiClassClassificationExperimentConfig;
 
-@Sources({ "file:conf/dyadranking/dyadmlplan.properties" })
+@Sources({ "file:conf/draco/dyadranking/dyadmlplan.properties" })
 public interface WekaDyadRankingSimpleEvaluationConfig extends IMultiClassClassificationExperimentConfig {
 
 	public static final String DB_EVAL_TABLE = "db.evalTable";

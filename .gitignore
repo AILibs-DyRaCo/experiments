@@ -28,4 +28,5 @@ build
 /.project
 
 !conf/dyadranking/final_plnet_minmax.zip
+!resources/draco/partial_pipeline_ranking/models/*
 !gradle/wrapper/*

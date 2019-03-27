@@ -3,6 +3,7 @@ package dyadranking.experiments.partialpipelineranking;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.sql.Time;
 import java.util.HashMap;
 import java.util.List;
@@ -22,10 +23,8 @@ import de.upb.crc901.mlplan.metamining.dyadranking.WEKADyadRankedNodeQueueConfig
 import de.upb.crc901.mlplan.multiclass.wekamlplan.MLPlanWekaClassifier;
 import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.WekaMLPlanWekaClassifier;
 import de.upb.crc901.mlplan.multiclass.wekamlplan.weka.model.MLPipeline;
-import hasco.variants.forwarddecomposition.HASCOViaFDAndBestFirstWithDyadRankedNodeQueueFactory;
 import jaicore.basic.SQLAdapter;
 import jaicore.basic.TimeOut;
-import jaicore.concurrent.TimeoutTimer;
 import jaicore.experiments.ExperimentDBEntry;
 import jaicore.experiments.ExperimentRunner;
 import jaicore.experiments.IExperimentIntermediateResultProcessor;
@@ -34,14 +33,16 @@ import jaicore.experiments.IExperimentSetEvaluator;
 import jaicore.ml.WekaUtil;
 import jaicore.ml.cache.ReproducibleInstances;
 import jaicore.ml.core.evaluation.measure.singlelabel.MultiClassPerformanceMeasure;
+import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.search.RandomlyRankedNodeQueueConfig;
+import jaicore.ml.dyadranking.util.DyadMinMaxScaler;
 import jaicore.planning.hierarchical.algorithms.forwarddecomposition.graphgenerators.tfd.TFDNode;
 import weka.classifiers.Evaluation;
 import weka.core.Instances;
 
 public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentSetEvaluator {
 
-	private static final File configFile = new File("conf/dyadranking/dyadmlplan.properties");
+	private static final File configFile = new File("conf/draco/dyadranking/dyadmlplan.properties");
 	private WekaDyadRankingSimpleEvaluationConfig config;
 	private static int arrayJobNr;
 
@@ -92,7 +93,7 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 
 		// Builder for normal ML-Plan
 		MLPlanBuilder builder = new MLPlanBuilder()
-				.withSearchSpaceConfigFile(new File("conf/automl/searchmodels/weka/weka-approach-5-autoweka.json"))
+				.withSearchSpaceConfigFile(new File("resources/automl/searchmodels/weka/weka-approach-5-autoweka.json"))
 				.withAlgorithmConfigFile(new File("conf/automl/mlplan.properties"))
 				.withPerformanceMeasure(MultiClassPerformanceMeasure.ERRORRATE)
 				.withCustomEvaluatorBridge(new SimpleUploaderMeasureBridge(new SimpleResultsUploader(adapter,
@@ -100,23 +101,53 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 
 		// Configure special cases (Random, Dyad ML-Plan)
 		WEKADyadRankedNodeQueueConfig openConfig = new WEKADyadRankedNodeQueueConfig();
-		if (keyfields.get("algorithm").equals("dyad_mlplan")) {
-			builder.setHascoFactory(new HASCOViaFDAndBestFirstWithDyadRankedNodeQueueFactory(openConfig));
-			builder.prepareNodeEvaluatorInFactoryWithData(data);
+		if (keyfields.get("algorithm").startsWith("dyad_mlplan")) {
+			builder.withOPENListConfiguration(openConfig);
 		} else if (keyfields.get("algorithm").equals("random")) {
-			builder.setHascoFactory(new HASCOViaFDAndBestFirstWithDyadRankedNodeQueueFactory(
-					new RandomlyRankedNodeQueueConfig<TFDNode>(Integer.parseInt(keyfields.get("seed")))));
-			builder.prepareNodeEvaluatorInFactoryWithData(data);
+			builder.withOPENListConfiguration(
+					new RandomlyRankedNodeQueueConfig<TFDNode>(Integer.parseInt(keyfields.get("seed"))));
 		}
 
 		MLPlanWekaClassifier mlplan = new WekaMLPlanWekaClassifier(builder);
 
+		// Load correct ranker and scaler according to config
+		if (keyfields.get("algorithm").contains("selection")) {
+			String algorithmargs = keyfields.get("algorithm").replaceAll("dyad_mlplan_selection_", "");
+			String numExamples = algorithmargs;
+			boolean normalize = false;
+			if (algorithmargs.endsWith("norm")) {
+				numExamples = algorithmargs.split("_")[0];
+				normalize = true;
+			}
+
+			// Load Ranker
+			PLNetDyadRanker plranker = new PLNetDyadRanker();
+			plranker.loadModelFromFile(
+					"resources/draco/partial_pipeline_ranking/models/ranker_" + numExamples + ".zip");
+			openConfig.setRanker(plranker);
+
+			// Load Scaler
+			if (normalize) {
+				FileInputStream fis = new FileInputStream(
+						new File("resources/draco/partial_pipeline_ranking/models/minmax_" + numExamples + ".ser"));
+				ObjectInputStream ois = new ObjectInputStream(fis);
+				openConfig.setScaler((DyadMinMaxScaler) ois.readObject());
+				fis.close();
+				ois.close();
+			} else {
+				// Don't use scaler
+				openConfig.setScaler(null);
+			}
+		}
+
 		// Characterize dataset (if needed) and inform db of how long it took
 		long datasettime = System.currentTimeMillis();
-		if (keyfields.get("algorithm").equals("dyad_mlplan")) {
+		if (keyfields.get("algorithm").startsWith("dyad_mlplan")) {
 			openConfig.setComponents(mlplan.getComponents());
 			openConfig.setData(split.get(0));
+
 		}
+
 		datasettime = System.currentTimeMillis() - datasettime;
 		results.put("datasetevaltime", datasettime);
 		processor.processResults(results);
@@ -169,10 +200,8 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 		print("Start experiment runner...");
 		ExperimentRunner runner = new ExperimentRunner(new WekaDyadRankingSimpleEvaluationExperimenter(configFile));
 		print("Conduct random experiment...");
-		runner.randomlyConductExperiments(false);
-		print("Experiment conducted, stop timeout timer.");
-		TimeoutTimer.getInstance().stop();
-		print("Timer stopped.");
+		runner.randomlyConductExperiments(1, false);
+		print("Experiment conducted.");
 	}
 
 }
