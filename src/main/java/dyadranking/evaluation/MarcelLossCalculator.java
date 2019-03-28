@@ -44,7 +44,7 @@ public class MarcelLossCalculator {
 
 	private static final String metaFeatureName = "X_LANDMARKERS";
 
-	private static final String weverNumberTable = "active_learning_wever_number_automl";
+	private static final String weverNumberTable = "active_learning_wever_number_automl_lr0052";
 
 	private static Pattern arrayDeserializer = Pattern.compile(" ");
 
@@ -54,7 +54,8 @@ public class MarcelLossCalculator {
 
 	private static final List<String> datasetNames = Arrays.asList("MLPlan-Data.txt");
 
-	private static final List<String> samplingStrategies = Arrays.asList("prototypical", "UCB", "random");
+	private static final List<String> samplingStrategies = Arrays.asList("prototypical", "UCB", "random",
+			"clustering_hierarchical", "clustering_kmeans");
 
 	private static final List<String> seeds = Arrays.asList("1", "2", "3", "4", "5");
 
@@ -97,7 +98,7 @@ public class MarcelLossCalculator {
 
 					DyadMinMaxScaler mmScaler = (DyadMinMaxScaler) scaler;
 
-					for (int queryStep = 50; queryStep <= 1000; queryStep += 50) {
+					for (int queryStep = 50; queryStep <= 500; queryStep += 50) {
 						StringBuilder sbPredictions = new StringBuilder();
 						sbPredictions.append(predictionsPath);
 						sbPredictions.append("prediction-");
@@ -128,18 +129,21 @@ public class MarcelLossCalculator {
 							SummaryStatistics mlMin = new SummaryStatistics();
 							SummaryStatistics mlAvg = new SummaryStatistics();
 
-							for (IInstance instance : dataset) {
-								IDyadRankingInstance drInstance = (IDyadRankingInstance) instance;
+							for(int j = 0; j < dataset.size(); j++ ) {
+								IDyadRankingInstance drInstance = (IDyadRankingInstance) dataset.get(j);
 								double marcelLossMin = computeMarcelLossMin(k, drInstance);
 								double marcelLossAvg = computeMarcelLossAvg(k, drInstance);
-								mlMin.addValue(marcelLossMin);
-								mlAvg.addValue(marcelLossAvg);
-							}
+//							for (IInstance instance : dataset) {
+//								
+//								mlMin.addValue(marcelLossMin);
+//								mlAvg.addValue(marcelLossAvg);
+//							}
 							Map<String, Object> valueMap = new HashMap<>();
 							valueMap.put("seed", seed);
 							valueMap.put("query_step", Integer.toString(queryStep));
 							valueMap.put("sampling_strategy", samplingStrategy);
 							valueMap.put("k", Integer.toString(k));
+							valueMap.put("pos_of_ranking", Integer.toString(j));
 							valueMap.put("avg", Double.toString(mlAvg.getMean()));
 							valueMap.put("min", Double.toString(mlMin.getMean()));
 							valueMap.put("dataset", datasetName);
@@ -148,6 +152,7 @@ public class MarcelLossCalculator {
 							} catch (SQLException e) {
 								// TODO Auto-generated catch block
 								e.printStackTrace();
+							}
 							}
 						}
 					}
@@ -356,7 +361,7 @@ public class MarcelLossCalculator {
 						+ "`sampling_strategy` varchar(200) NOT NULL,\r\n" + "`dataset` varchar(200) NOT NULL,\r\n"
 						+ "`seed` int NOT NULL,\r\n" + "`query_step` int NOT NULL,\r\n" + " `k` int NOT NULL,\r\n"
 						+ "`avg` double NULL DEFAULT NULL," + "`min` double NULL DEFAULT NULL,"
-						+ " PRIMARY KEY (`evaluation_id`)\r\n"
+						+ "`pos_of_ranking` int NOT NULL,\r\n" + " PRIMARY KEY (`evaluation_id`)\r\n"
 						+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin", new ArrayList<>());
 			}
 			System.out.println("created table");

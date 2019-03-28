@@ -75,7 +75,6 @@ public class ActiveLearningExperimenter {
 				System.out.println(samplingStrategy);
 				double trainRatio = Double.parseDouble(m.getTrainRatios());
 				int lengthOfTopRankingToConsider = Integer.parseInt(m.getLengthOfTopRanking());
-//				int numberRandomQueriesAtStart = Integer.parseInt(description.get("number_random_queries_at_start"));
 				int numberRandomQueriesAtStart = Integer.parseInt(m.getNumberRandomQueriesAtStart());
 				String measure = description.get("measure");
 				String curveTable = m.getLearningCurveTableName();
