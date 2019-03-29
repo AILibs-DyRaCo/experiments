@@ -44,7 +44,7 @@ public class MarcelLossCalculator {
 
 	private static final String metaFeatureName = "X_LANDMARKERS";
 
-	private static final String weverNumberTable = "active_learning_wever_number_automl_lr0052";
+	private static final String weverNumberTable = "active_learning_wever_number_lr0052";
 
 	private static Pattern arrayDeserializer = Pattern.compile(" ");
 
@@ -144,8 +144,8 @@ public class MarcelLossCalculator {
 							valueMap.put("sampling_strategy", samplingStrategy);
 							valueMap.put("k", Integer.toString(k));
 							valueMap.put("pos_of_ranking", Integer.toString(j));
-							valueMap.put("avg", Double.toString(mlAvg.getMean()));
-							valueMap.put("min", Double.toString(mlMin.getMean()));
+							valueMap.put("avg", Double.toString(marcelLossAvg));
+							valueMap.put("min", Double.toString(marcelLossMin));
 							valueMap.put("dataset", datasetName);
 							try {
 								adapter.insert(weverNumberTable, valueMap);
@@ -351,6 +351,7 @@ public class MarcelLossCalculator {
 			boolean hasPerformanceTable = false;
 			while (rs.next()) {
 				String tableName = rs.getString(1);
+				System.out.println(tableName);
 				if (tableName.equals(weverNumberTable))
 					hasPerformanceTable = true;
 			}
@@ -361,7 +362,7 @@ public class MarcelLossCalculator {
 						+ "`sampling_strategy` varchar(200) NOT NULL,\r\n" + "`dataset` varchar(200) NOT NULL,\r\n"
 						+ "`seed` int NOT NULL,\r\n" + "`query_step` int NOT NULL,\r\n" + " `k` int NOT NULL,\r\n"
 						+ "`avg` double NULL DEFAULT NULL," + "`min` double NULL DEFAULT NULL,"
-						+ "`pos_of_ranking` int NOT NULL,\r\n" + " PRIMARY KEY (`evaluation_id`)\r\n"
+						+ "`pos_of_ranking` int NOT NULL,\r\n"  + " PRIMARY KEY (`evaluation_id`)\r\n"
 						+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin", new ArrayList<>());
 			}
 			System.out.println("created table");
