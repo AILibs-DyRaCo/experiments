@@ -99,15 +99,17 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 				.withCustomEvaluatorBridge(new SimpleUploaderMeasureBridge(new SimpleResultsUploader(adapter,
 						config.evaluationsTable(), keyfields.get("algorithm"), experimentEntry.getId())));
 
-		// Configure special cases (Random, Dyad ML-Plan)
+		// Configure special cases (Random, Dyad ML-Plan, ML-PLan)
 		WEKADyadRankedNodeQueueConfig openConfig = new WEKADyadRankedNodeQueueConfig();
 		if (keyfields.get("algorithm").startsWith("dyad_mlplan")) {
 			builder.withOPENListConfiguration(openConfig);
 		} else if (keyfields.get("algorithm").equals("random")) {
 			builder.withOPENListConfiguration(
 					new RandomlyRankedNodeQueueConfig<TFDNode>(Integer.parseInt(keyfields.get("seed"))));
+		} else if (keyfields.get("algorithm").equals("mlplan")) {
+			builder.withRandomCompletionBasedBestFirstSearch();
 		}
-
+		
 		MLPlanWekaClassifier mlplan = new WekaMLPlanWekaClassifier(builder);
 
 		// Load correct ranker and scaler according to config
@@ -120,14 +122,14 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 				normalize = true;
 			}
 
-			// Load Ranker
-			PLNetDyadRanker plranker = new PLNetDyadRanker();
-			plranker.loadModelFromFile(
-					"resources/draco/partial_pipeline_ranking/models/ranker_" + numExamples + ".zip");
-			openConfig.setRanker(plranker);
-
 			// Load Scaler
 			if (normalize) {
+				// Load Ranker
+				PLNetDyadRanker plranker = new PLNetDyadRanker();
+				plranker.loadModelFromFile(
+						"resources/draco/partial_pipeline_ranking/models/ranker_with_norm_" + numExamples + ".zip");
+				openConfig.setRanker(plranker);
+				
 				FileInputStream fis = new FileInputStream(
 						new File("resources/draco/partial_pipeline_ranking/models/minmax_" + numExamples + ".ser"));
 				ObjectInputStream ois = new ObjectInputStream(fis);
@@ -135,6 +137,12 @@ public class WekaDyadRankingSimpleEvaluationExperimenter implements IExperimentS
 				fis.close();
 				ois.close();
 			} else {
+				// Load Ranker
+				PLNetDyadRanker plranker = new PLNetDyadRanker();
+				plranker.loadModelFromFile(
+						"resources/draco/partial_pipeline_ranking/models/ranker_" + numExamples + ".zip");
+				openConfig.setRanker(plranker);
+				
 				// Don't use scaler
 				openConfig.setScaler(null);
 			}
