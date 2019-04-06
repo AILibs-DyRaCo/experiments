@@ -16,7 +16,7 @@ import org.semanticweb.owlapi.model.OWLOntologyCreationException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import de.upb.crc901.mlplan.metamining.pipelinecharacterizing.ManualPatternMiner;
+import de.upb.crc901.mlplan.metamining.pipelinecharacterizing.ComponentInstanceVectorFeatureGenerator;
 import de.upb.isys.linearalgebra.DenseDoubleVector;
 import dyadranking.sql.SQLUtils;
 import hasco.model.ComponentInstance;
@@ -38,23 +38,23 @@ public class PerformanceSamplesToManualMiner {
 
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 
-		String resultTableName = "dyad_dataset_approach_5_performance_samples_full";
+		String resultTableName = "dyad_dataset_approach_5_performance_samples_with_SMO";
 
 		ObjectMapper mapper = new ObjectMapper();
-		File jsonFile = Paths.get(ManualPatternMiner.class.getClassLoader()
+		File jsonFile = Paths.get(ComponentInstanceVectorFeatureGenerator.class.getClassLoader()
 				.getResource(Paths.get("weka", "weka-approach-5-autoweka.json").toString()).toURI())
 				.toFile();
 		ComponentLoader loader = new ComponentLoader(jsonFile);
 		mapper.registerModule(new HASCOJacksonModule(loader.getComponents()));
 
-		ManualPatternMiner characterizer = new ManualPatternMiner(loader.getComponents());
+		ComponentInstanceVectorFeatureGenerator characterizer = new ComponentInstanceVectorFeatureGenerator(loader.getComponents());
 
 		// create the result table
 		createDyadTable(adapter, resultTableName);
 
 		// select the average score for a distinct pipeline on a dataset
 		ResultSet pipelinesGroupedByDataset = adapter.getResultsOfQuery(
-				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers` NATURAL JOIN draco_pipelines_5_classifiers WHERE loss IS NOT NULL");
+				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers_with_SMO` NATURAL JOIN draco_pipelines_5_classifiers_with_SMO WHERE loss IS NOT NULL AND pipeline_id >= 3520");
 
 		System.out.println("Query done");
 		while (pipelinesGroupedByDataset.next()) {
@@ -64,7 +64,7 @@ public class PerformanceSamplesToManualMiner {
 			int pipelineId = pipelinesGroupedByDataset.getInt(4);
 			// deserialize component-instance
 			ComponentInstance cI = mapper.readValue(composition, ComponentInstance.class);
-			double[] y = characterizer.characterize(cI, new DenseDoubleVector(characterizer.getLengthOfCharacrization(), 0));
+			double[] y = characterizer.characterize(cI, new DenseDoubleVector(characterizer.getLengthOfCharacterization(), 0));
 			String serializedY = Arrays.stream(y).mapToObj(d -> d + "").collect(Collectors.joining(" "));
 
 			Map<String, Object> values = new HashMap<>();

@@ -1,33 +1,12 @@
 package dyadranking.zeroshotml.experiments;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.regex.Pattern;
 
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-
-import dyadranking.sql.SQLUtils;
 import jaicore.basic.SQLAdapter;
-import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
-import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
-import jaicore.ml.dyadranking.util.DyadNormalScaler;
-import jaicore.ml.dyadranking.zeroshot.inputoptimization.NegIdentityInpOptLoss;
-import jaicore.ml.dyadranking.zeroshot.inputoptimization.PLNetInputOptimizer;
-import jaicore.ml.dyadranking.zeroshot.util.InputOptListener;
-import jaicore.ml.dyadranking.zeroshot.util.ZeroShotUtil;
-import weka.classifiers.Evaluation;
-import weka.classifiers.trees.J48;
-import weka.core.Instances;
 
 public class ZeroShotCurvesExperiment {
 	
@@ -92,7 +71,7 @@ public class ZeroShotCurvesExperiment {
 		
 		return initHyperPars;
 	}
-	
+	/**
 	public static double evaluateJ48(INDArray hyperPars, Instances data, DyadNormalScaler scaler) {
 		J48 j48 = new J48();
 		double score = 0.0;
@@ -190,5 +169,5 @@ public class ZeroShotCurvesExperiment {
 			System.out.println();
 		}
 	}
-	
+	*/
 }

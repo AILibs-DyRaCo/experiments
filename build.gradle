@@ -125,7 +125,7 @@ task subsamplingBasedPLNetTrainer(type: Jar) {
 task subsamplingBasedDatasetGenerator(type: Jar) {
 	zip64 = true
     manifest {
-        attributes 'Main-Class': ' dyadranking.performance.SubsamplingBasedDatasetGenerator'
+        attributes 'Main-Class': ' dyadranking.performance.mccvevaluation.SubsamplingBasedDatasetGenerator'
     }
     destinationDir = file("${projectDir}")
     baseName = 'subsamplingBasedDatasetGenerator'
@@ -140,7 +140,7 @@ task subsamplingBasedDatasetGenerator(type: Jar) {
 task jsonConfigBasedPLNetTrainer(type: Jar) {
 	zip64 = true
     manifest {
-        attributes 'Main-Class': ' dyadranking.performance.JsonConfigBasedPLNetTrainer'
+        attributes 'Main-Class': 'dyadranking.performance.mccvevaluation.JsonConfigBasedPLNetTrainer'
     }
     destinationDir = file("${projectDir}")
     baseName = 'jsonConfigBasedPLNetTrainer'
@@ -158,6 +158,49 @@ task jsonConfigCleaner(type: Jar) {
     }
     destinationDir = file("${projectDir}")
     baseName = 'jsonConfigCleaner'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+task lossUpdater(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': 'dyadranking.performance.mccvevaluation.JSONConfigBasedLossUpdater'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'lossUpdater'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+task mlplan(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': 'dyadranking.nodeevaluation.timebased.MLPlanExperimenter'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'mlplan'
+    exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
+    from sourceSets.main.allSource
+    from { (configurations.compile)
+            .collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+task marcelsLossExperimenter(type: Jar) {
+	zip64 = true
+    manifest {
+        attributes 'Main-Class': 'dyadranking.performance.mccvevaluation.experimenters.MarcelsLossExperimenter'
+    }
+    destinationDir = file("${projectDir}")
+    baseName = 'marcelsLossExperimenter'
     exclude ('META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA')
     from sourceSets.main.allSource
     from { (configurations.compile)

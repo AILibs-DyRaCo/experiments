@@ -9,7 +9,6 @@ import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
 import jaicore.ml.dyadranking.loss.DyadRankingLossUtil;
 import jaicore.ml.dyadranking.loss.KendallsTauDyadRankingLoss;
-import jaicore.ml.dyadranking.util.DyadNormalScaler;
 
 public class PLNetEvaluation {
 	
@@ -24,9 +23,9 @@ public class PLNetEvaluation {
 		DyadRankingDataset data = new DyadRankingDataset();
 		data.deserialize(new FileInputStream(dataFile));
 		
-		DyadNormalScaler scaler = new DyadNormalScaler();
-		scaler.fit(data);
-		scaler.transformAlternatives(data);
+//		DyadNormalScaler scaler = new DyadNormalScaler();
+//		scaler.fit(data);
+//		scaler.transformAlternatives(data);
 		
 		PLNetDyadRanker plNet = new PLNetDyadRanker();
 		plNet.loadModelFromFile(PLNET);

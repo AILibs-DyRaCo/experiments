@@ -41,7 +41,7 @@ public class SubsamplingBasedDatasetGenerator {
 
 	private static final Pattern arrayDeserializer = Pattern.compile(" ");
 
-	private static String dyadTable = "dyad_dataset_approach_5_performance_samples_full";
+	private static String dyadTable = "dyad_dataset_approach_5_performance_samples_with_SMO";
 
 	private static final String datasetMetaFeatureTable = "dataset_metafeatures_mirror";
 
@@ -52,29 +52,37 @@ public class SubsamplingBasedDatasetGenerator {
 	private static List<Integer> allDatasets = Arrays.asList(44, 1462, 1063, 1480, 151, 1038, 333, 312, 334, 1510, 335,
 			50, 31, 37, 1494, 1493, 1471, 1491, 1050, 1489, 1467, 1049, 3, 1487, 1068, 1046, 1464, 1067, 1504);
 
-	private static List<Integer> allSubsamplingSizes = Arrays.asList(100, 250, 500, 750, 1000, 2500);
+	private static List<Integer> allSubsamplingSizes = Arrays.asList(1800, 1900, 2000, 2250, 2500, 2750, 3000, 3250,
+			3500, 3750, 4000);
 
 	public static void main(String[] args) throws Exception {
+		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 
 		List<List<Integer>> trainDatasets = new ArrayList<>(10);
 		List<List<Integer>> testDatasets = new ArrayList<>(10);
+		int splitIndex = (int) Math.floor(0.7d * allDatasets.size());
 
 		for (int i = 0; i < 10; i++) {
-			int splitIndex = (int) Math.floor(0.7d * allDatasets.size());
 			Collections.sort(allDatasets);
 			Collections.shuffle(allDatasets, new Random(i));
-			trainDatasets.add(allDatasets.subList(0, splitIndex));
-			testDatasets.add( allDatasets.subList(splitIndex, allDatasets.size()));
+			List<Integer> train = new ArrayList<>();
+			for (int j = 0; j < splitIndex; j++) {
+				train.add(allDatasets.get(j));
+			}
+			trainDatasets.add(train);
+			List<Integer> test = new ArrayList<>();
+			for (int j = splitIndex; j < allDatasets.size(); j++) {
+				test.add(allDatasets.get(j));
+			}
+			testDatasets.add(test);
 		}
-		List<Integer> copiedDatasets = new ArrayList<>(allDatasets);
-		Collections.shuffle(copiedDatasets, random);
 
 		for (int subsamplingSize : allSubsamplingSizes) {
-			SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
-			
 
 			for (int i = 0; i < 10; i++) {
-List<List<IDyadRankingInstance>> allLists = new ArrayList<>();
+				random = new Random(i);
+
+				List<List<IDyadRankingInstance>> allLists = new ArrayList<>();
 				List<Integer> trainDS = trainDatasets.get(i);
 				List<Integer> testDS = testDatasets.get(i);
 				JSONObject json = new JSONObject();

@@ -42,19 +42,25 @@ public class JsonConfigBasedPLNetTrainer {
 			System.out.println("Reading " + potentiallyConfig.getName());
 			JSONObject jsonObject = new ObjectMapper().readValue(potentiallyConfig, JSONObject.class);
 
-			if (jsonObject.containsKey("rankerWithSer") || jsonObject.containsKey("ranker")) {
+			boolean hasNormalRanker = jsonObject.containsKey(JSONConfigKeys.RANKER_PATH);
+
+		//	boolean hasScaledRanker = jsonObject.containsKey(JSONConfigKeys.RANKER_WITH_NORMALIZATION);
+
+			boolean hasScaledRanker = true;
+			
+			if (hasNormalRanker && hasScaledRanker) {
 				System.out.println("Ranker was already trained on this dataset");
 				// if (new File((String) jsonObject.get("rankerWithSer")).exists())
 				continue;
 			}
 
-			String datasetPath = (String) jsonObject.get("datasetPath");
+			String datasetPath = (String) jsonObject.get(JSONConfigKeys.DATASET);
 
-			String datasetWithNormalizationPath = (String) jsonObject.get("datasetWithNorm");
+			String datasetWithNormalizationPath = (String) jsonObject.get(JSONConfigKeys.DATASET_NORM_KEY);
 
-			int subsamplingSize = (int) jsonObject.get("subsamplingSize");
-			
-			int splitIndex = (int) jsonObject.get("mccvIndex");
+			int subsamplingSize = (int) jsonObject.get(JSONConfigKeys.SUBSAMPLING_SIZE);
+
+			int splitIndex = (int) jsonObject.get(JSONConfigKeys.MCCV_INDEX);
 
 			System.out.println("Found the following datasets: " + datasetPath + ", " + datasetWithNormalizationPath);
 
@@ -65,9 +71,16 @@ public class JsonConfigBasedPLNetTrainer {
 
 			System.out.println("Updating json");
 
-			jsonObject.put("ranker", new File("rankersMCCV/ranker_" + subsamplingSize + "_"+ splitIndex+".zip").getAbsolutePath());
-			jsonObject.put("rankerWithSer",
-					new File("rankersMCCV/ranker_with_norm_" + subsamplingSize + "_"+ splitIndex+".zip").getAbsolutePath());
+			if (!hasNormalRanker) {
+				jsonObject.put("ranker", new File("rankersMCCV/ranker_" + subsamplingSize + "_" + splitIndex + ".zip")
+						.getAbsolutePath());
+			}
+
+			if (!hasScaledRanker) {
+				jsonObject.put("rankerWithSer",
+						new File("rankersMCCV/ranker_with_norm_" + subsamplingSize + "_" + splitIndex + ".zip")
+								.getAbsolutePath());
+			}
 
 			potentiallyConfig.delete();
 			try (FileWriter writer = new FileWriter(potentiallyConfig)) {
@@ -79,23 +92,24 @@ public class JsonConfigBasedPLNetTrainer {
 			PLNetDyadRanker ranker;
 			DyadRankingDataset dataset;
 
-			ranker = new PLNetDyadRanker();
+			if (!hasNormalRanker) {
+				ranker = new PLNetDyadRanker();
 
-			dataset = new DyadRankingDataset();
-			dataset.deserialize(new FileInputStream(new File(datasetPath)));
-			ranker.train(dataset);
-			System.out.println("Finished Training non-normalized ranker...");
-			ranker.saveModelToFile("rankersMCCV/ranker_" + subsamplingSize +"_"+ splitIndex);
-
-			dataset = new DyadRankingDataset();
-			ranker = new PLNetDyadRanker();
-
-			// System.gc();
-
-			dataset.deserialize(new FileInputStream(new File(datasetWithNormalizationPath)));
-			ranker.train(dataset);
-			System.out.println("Finished training normalized ranker...");
-			ranker.saveModelToFile("rankersMCCV/ranker_with_norm_" + subsamplingSize+ "_"+ splitIndex);
+				dataset = new DyadRankingDataset();
+				dataset.deserialize(new FileInputStream(new File(datasetPath)));
+				ranker.train(dataset);
+				System.out.println("Finished Training non-normalized ranker...");
+				ranker.saveModelToFile("rankersMCCV/ranker_" + subsamplingSize + "_" + splitIndex);
+			}
+			
+			if (!hasScaledRanker) {
+				dataset = new DyadRankingDataset();
+				ranker = new PLNetDyadRanker();
+				dataset.deserialize(new FileInputStream(new File(datasetWithNormalizationPath)));
+				ranker.train(dataset);
+				System.out.println("Finished training normalized ranker...");
+				ranker.saveModelToFile("rankersMCCV/ranker_with_norm_" + subsamplingSize + "_" + splitIndex);
+			}
 		}
 	}
 }

@@ -16,6 +16,10 @@ public class JSONConfigKeys {
 	
 	public static final String SUBSAMPLING_SIZE = "subsamplingSize";
 	
+	public static final String DATASET = "datasetPath";
+	
+	public static final String DATASET_NORM_KEY = "datasetWithNorm";
+	
 	private JSONConfigKeys() {}
 
 }

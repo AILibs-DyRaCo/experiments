@@ -14,9 +14,9 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class JSONConfigCleaner {
-	
+
 	private static String pathToConfigFolder;
-	
+
 	public static void main(String[] args) throws JsonParseException, JsonMappingException, IOException {
 		if (args.length > 0 && pathToConfigFolder == null) {
 			pathToConfigFolder = args[0];
@@ -41,13 +41,13 @@ public class JSONConfigCleaner {
 					jsonObject.remove(JSONConfigKeys.RANKER_WITH_NORMALIZATION);
 				}
 			}
-			
+
 			if (jsonObject.containsKey(JSONConfigKeys.RANKER_PATH)) {
 				if (!new File((String) jsonObject.get(JSONConfigKeys.RANKER_PATH)).exists()) {
 					jsonObject.remove(JSONConfigKeys.RANKER_PATH);
 				}
 			}
-			
+
 			potentiallyConfig.delete();
 			try (FileWriter writer = new FileWriter(potentiallyConfig)) {
 				writer.write(jsonObject.toJSONString());

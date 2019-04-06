@@ -57,7 +57,7 @@ public class PerformanceSamplesToTreeMiner {
 
 		// select the average score for a distinct pipeline on a dataset
 		ResultSet pipelinesGroupedByDataset = adapter.getResultsOfQuery(
-				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers` NATURAL JOIN draco_pipelines_5_classifiers WHERE loss IS NOT NULL");
+				"SELECT composition, dataset_id, loss, pipeline_id FROM `pipeline_performance_5_classifiers_with_SMO` NATURAL JOIN draco_pipelines_5_classifiers_with_SMO WHERE loss IS NOT NULL");
 		while (pipelinesGroupedByDataset.next()) {
 			String composition = pipelinesGroupedByDataset.getString(1);
 			double avgScore = pipelinesGroupedByDataset.getDouble(3);
@@ -72,6 +72,7 @@ public class PerformanceSamplesToTreeMiner {
 			values.put("dataset", dataset);
 			values.put("y", serializedY);
 			values.put("score", avgScore);
+			values.put("pattern_length", ""+y.length);
 			adapter.insert(resultTableName, values);
 
 		}
@@ -89,7 +90,7 @@ public class PerformanceSamplesToTreeMiner {
 
 		if (!hasPerformanceTable) {
 			adapter.update(
-					"CREATE TABLE " + newTableName + " (\r\n" + " `id` int(10) NOT NULL AUTO_INCREMENT,\r\n"
+					"CREATE TABLE " + newTableName + " (\r\n" + " `id` int(10) NOT NULL AUTO_INCREMENT,\r\n"+ " `pattern_length` int(100) NOT NULL, \r \n" 
 							+ " `dataset` TEXT NOT NULL, \r \n" + " `score` double NOT NULL,\r\n" + " `y` TEXT, \r \n"
 							+ " PRIMARY KEY (`id`)\r\n"
 							+ ") ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_bin",
@@ -117,7 +118,7 @@ public class PerformanceSamplesToTreeMiner {
 			ObjectMapper mapper)
 			throws SQLException, JsonParseException, JsonMappingException, IOException, InterruptedException {
 		// selects all distinct pipelines
-		ResultSet res = adapter.getResultsOfQuery("SELECT DISTINCT composition from draco_pipelines_5_classifiers");
+		ResultSet res = adapter.getResultsOfQuery("SELECT DISTINCT composition from draco_pipelines_5_classifiers_with_SMO");
 
 		List<ComponentInstance> instances = new ArrayList<>();
 

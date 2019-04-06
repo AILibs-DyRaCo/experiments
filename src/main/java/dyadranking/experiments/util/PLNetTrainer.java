@@ -1,6 +1,5 @@
 package dyadranking.experiments.util;
 
-import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -13,7 +12,6 @@ import jaicore.ml.core.predictivemodel.IPredictiveModelConfiguration;
 import jaicore.ml.dyadranking.algorithm.IPLNetDyadRankerConfiguration;
 import jaicore.ml.dyadranking.algorithm.PLNetDyadRanker;
 import jaicore.ml.dyadranking.dataset.DyadRankingDataset;
-import jaicore.ml.dyadranking.util.DyadNormalScaler;
 import jaicore.ml.dyadranking.util.DyadStandardScaler;
 
 public class PLNetTrainer {
@@ -83,7 +81,7 @@ public class PLNetTrainer {
 			System.out.println("Preprocessing...");
 			String preprocess = args[2];
 			DyadStandardScaler stdScaler = new DyadStandardScaler();
-			DyadNormalScaler normScaler = new DyadNormalScaler();
+	//		DyadNormalScaler normScaler = new DyadNormalScaler();
 			switch (preprocess.toLowerCase()) {
 				case "standardize":
 					stdScaler.fitTransform(data);
@@ -97,15 +95,15 @@ public class PLNetTrainer {
 					stdScaler.transformAlternatives(data);
 					break;
 				case "normalize":
-					normScaler.fitTransform(data);
+//					normScaler.fitTransform(data);
 					break;
 				case "normalizeinstances":
-					normScaler.fit(data);
-					normScaler.transformInstances(data);
+//					normScaler.fit(data);
+//					normScaler.transformInstances(data);
 					break;
 				case "normalizealternatives":
-					normScaler.fit(data);
-					normScaler.transformAlternatives(data);
+//					normScaler.fit(data);
+//					normScaler.transformAlternatives(data);
 					break;			
 			}			
 			System.out.println("Finished preprocessing");

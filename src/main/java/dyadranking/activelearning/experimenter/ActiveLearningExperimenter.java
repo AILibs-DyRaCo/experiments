@@ -1,5 +1,5 @@
 package dyadranking.activelearning.experimenter;
-
+/**
 import java.io.File;
 import java.io.FileInputStream;
 import java.sql.ResultSet;
@@ -50,6 +50,7 @@ public class ActiveLearningExperimenter {
 					final IExperimentIntermediateResultProcessor processor) throws Exception {
 
 				/* get experiment setup */
+/**
 				Map<String, String> description = experimentEntry.getExperiment().getValuesOfKeyFields();
 				int seed = Integer.parseInt(description.get("seed"));
 				String datasetName = description.get(IActiveLearningConfig.DATASETS);
@@ -63,7 +64,7 @@ public class ActiveLearningExperimenter {
 				int lengthOfTopRankingToConsider = Integer.parseInt(description.get("length_of_top_ranking"));
 				String curveTable = m.getLearningCurveTableName();
 
-				/* initialize learning curve table if not existent */
+				/* initialize learning curve table if not existent *//**
 				try {
 					ResultSet rs = adapter.getResultsOfQuery("SHOW TABLES");
 					boolean hasPerformanceTable = false;
@@ -134,10 +135,10 @@ public class ActiveLearningExperimenter {
 				
 				}
 
-				/* run experiment */
+				/* run experiment 
 				Map<String, Object> results = new HashMap<>();
 
-				/* report results */
+				/* report results 
 				results.put("measure", "Kendalls Tau");
 				results.put("score", currentScore);
 				processor.processResults(results);
@@ -146,4 +147,4 @@ public class ActiveLearningExperimenter {
 		runner.randomlyConductExperiments(true);
 	}
 
-}
+}*/

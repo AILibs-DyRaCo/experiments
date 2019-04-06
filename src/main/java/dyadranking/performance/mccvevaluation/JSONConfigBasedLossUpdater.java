@@ -14,6 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Random;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -23,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import de.upb.isys.linearalgebra.DenseDoubleVector;
 import dyadranking.sql.SQLUtils;
+import hasco.model.ComponentInstance;
 import jaicore.basic.SQLAdapter;
 import jaicore.basic.sets.SetUtil.Pair;
 import jaicore.ml.dyadranking.Dyad;
@@ -36,9 +41,9 @@ import jaicore.ml.dyadranking.util.DyadMinMaxScaler;
 
 public class JSONConfigBasedLossUpdater {
 
-	private static String pathToConfigFolder = "/Users/elppa/git_pg/DRACO/experiments/jsonConfigs";
+	private static String pathToConfigFolder = null;
 
-	private static String dyadTable = "dyad_dataset_approach_5_performance_samples_full";
+	private static String dyadTable = "dyad_dataset_approach_5_performance_samples_with_SMO";
 
 	private static final String datasetMetaFeatureTable = "dataset_metafeatures_mirror";
 
@@ -46,11 +51,13 @@ public class JSONConfigBasedLossUpdater {
 
 	private static final int rankingLength = 20;
 
-	private static Random random = new Random(42);
-
 	private static int[] kLengths = { 3, 5, 10 };
 
 	private static Pattern arrayDeserializer = Pattern.compile(" ");
+
+	static int submittedTasks = 0;
+	
+	static int avgRun;
 
 	private static Map<String, List<DatabaseDyad>> cachedDyads = new HashMap<>();
 
@@ -58,250 +65,288 @@ public class JSONConfigBasedLossUpdater {
 		SQLAdapter adapter = SQLUtils.sqlAdapterFromArgs(args);
 		if (args.length > 3 && pathToConfigFolder == null) {
 			pathToConfigFolder = args[4];
+			avgRun = Integer.parseInt(args[5]);
 		}
 
 		File jsonFolder = new File(pathToConfigFolder);
 		File[] configs = jsonFolder.listFiles();
 		configs = Arrays.stream(configs).filter(File::isFile).filter(f -> f.getName().contains(".json"))
 				.toArray(File[]::new);
+		List<File> l2 = Arrays.asList(configs);
+		Collections.sort(l2,
+				(f1, f2) -> Integer.compare(Integer.parseInt(f1.getName().replace("_", "").replace(".json", "")),
+						Integer.parseInt(f2.getName().replace("_", "").replace(".json", ""))));
+		configs = l2.toArray(configs);
 
-		LossUpdater lossUpdater = new LossUpdater(adapter, "approach_5_evals_mccv");
+		Executor executor = Executors.newFixedThreadPool(4);
+		CompletionService<Void> completionService = new ExecutorCompletionService<>(executor);
+
+		LossUpdater lossUpdater = new LossUpdater(adapter, "approach_5_evals_final_"+avgRun);
 		for (File potentiallyConfig : configs) {
+			submittedTasks++;
+			completionService.submit(() -> {
 
-			if (!isAValidConfig(potentiallyConfig)) {
-				continue;
-			}
-
-			JSONObject jsonObject = new ObjectMapper().readValue(potentiallyConfig, JSONObject.class);
-			// start evaluating here
-
-			// outer loop: mccv split
-
-			String rankerPath = (String) jsonObject.get(JSONConfigKeys.RANKER_PATH);
-
-			String normalizedRankerPath = (String) jsonObject.get(JSONConfigKeys.RANKER_WITH_NORMALIZATION);
-
-			String scalerPath = (String) jsonObject.get(JSONConfigKeys.SCALER_PATH);
-
-			@SuppressWarnings("unchecked")
-			List<Integer> testDatasets = (List<Integer>) jsonObject.get(JSONConfigKeys.TEST_DATASETS);
-
-			@SuppressWarnings("unchecked")
-			List<Integer> trainDatasets = (List<Integer>) jsonObject.get(JSONConfigKeys.TRAIN_DATASETS);
-
-			int mccvSplit = (int) jsonObject.get(JSONConfigKeys.MCCV_INDEX);
-
-			int subSamplingSize = (int) jsonObject.get(JSONConfigKeys.SUBSAMPLING_SIZE);
-
-			String cacheKey = potentiallyConfig.getName();
-			cacheTrainDyads(trainDatasets, adapter, cacheKey);
-
-			// System.out.println("testingDatasets are ..." + testDatasets.toString());
-			PLNetDyadRanker ranker = new PLNetDyadRanker();
-
-			ranker.loadModelFromFile(rankerPath);
-
-			PLNetDyadRanker normalizedRanker = new PLNetDyadRanker();
-			normalizedRanker.loadModelFromFile(normalizedRankerPath);
-
-			OneNNBaseline oneNNBaseline = new OneNNBaseline(cachedDyads);
-			oneNNBaseline.buildClassifier(trainDatasets, adapter);
-
-			AverageRankBaseline averageRankBaseline = new AverageRankBaseline(cachedDyads);
-
-			try (ObjectInputStream oin = new ObjectInputStream(new FileInputStream(scalerPath))) {
-
-				DyadMinMaxScaler scaler = (DyadMinMaxScaler) oin.readObject();
-
-				for (int testDatasetId : testDatasets) {
-
-					double closestDatasetId = oneNNBaseline.getClosestDatasetId(testDatasetId, adapter);
-
-					/* Now do 10 repeats for averaging */
-					for (int innerAveragingRun = 0; innerAveragingRun < 10; innerAveragingRun++) {
-
-						/*
-						 * Draw the dyads that should be ranked (careful that the dyads have a distinct
-						 * score to not cunfuse the Kendalls Taus measures)
-						 */
-						List<Pair<Double, Dyad>> testDyads = getDyadRankingInstanceForDataset(testDatasetId, adapter);
-
-						List<Dyad> orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
-								.collect(Collectors.toList());
-						DyadRankingDataset trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
-
-						/* Now get the prediction for the 1 NN classifier */
-						// just be careful that the ordering of the dyads do not affect the baseline
-						// here
-						Collections.shuffle(testDyads, random);
-						List<Dyad> shuffeledDyads = testDyads.stream().map(Pair::getY).collect(Collectors.toList());
-
-						List<Pair<Double, Dyad>> baseline_1NN_dyadPairs = oneNNBaseline.get1NNRanking(closestDatasetId,
-								shuffeledDyads, potentiallyConfig.getName());
-						List<Dyad> baseline_1NN_orderedDyads = baseline_1NN_dyadPairs.stream().map(Pair::getY)
-								.collect(Collectors.toList());
-						DyadRankingDataset baseline_1NN_predictedRanking = DyadRankingDataset
-								.fromOrderedDyadList(baseline_1NN_orderedDyads);
-
-						/* Now get the predicition of the AverageRank baseline */
-						// again, be careful that no ordering information influences this
-
-						Collections.shuffle(testDyads, random);
-						shuffeledDyads = testDyads.stream().map(Pair::getY).collect(Collectors.toList());
-						// returns an already ordered list!
-						List<Pair<Double, Dyad>> baseline_AverageRank_dyadPairs = averageRankBaseline
-								.getAverageRankForDatasets(shuffeledDyads, potentiallyConfig.getName());
-
-						List<Dyad> baseline_AverageRank_orderedDyads = baseline_AverageRank_dyadPairs.stream()
-								.map(Pair::getY).collect(Collectors.toList());
-						DyadRankingDataset baseline_AverageRank_predictedRanking = DyadRankingDataset
-								.fromOrderedDyadList(baseline_AverageRank_orderedDyads);
-
-						/* Used for marcels losses on the baselines */
-						Map<Object, Object> map = testDyads.stream().collect(Collectors.toMap(Pair::getY, Pair::getX));
-
-						for (int j = 0; j < kLengths.length; j++) {
-							double topKKTAU = DyadRankingLossUtil.computeAverageLoss(
-									new KendallsTauOfTopK(kLengths[j], 0.5d), trueOrdering, ranker, random);
-							lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-									kLengths[j], APPROACH.DYADRANKING, topKKTAU);
-						}
-
-						// re-order the true ordering, in case that the loss function messes this up!
-						orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
-								.collect(Collectors.toList());
-						trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
-
-						// 1NN Baseline KT
-
-						double kTau_1NN = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(),
-								trueOrdering, baseline_1NN_predictedRanking);
-
-						lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-								APPROACH.ONE_NN_BASELINE, kTau_1NN);
-
-						// again reordering time!
-						orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
-								.collect(Collectors.toList());
-						trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
-
-						// Average Rank KT
-						double kTau_AverageRank = DyadRankingLossUtil.computeAverageLoss(
-								new KendallsTauDyadRankingLoss(), trueOrdering, baseline_AverageRank_predictedRanking);
-
-						lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-								APPROACH.AVERAGE_RANK_BASELINE, kTau_AverageRank);
-
-						List<Dyad> shuffelledDyads = testDyads.stream().map(Pair::getY).collect(Collectors.toList());
-						Collections.shuffle(shuffelledDyads, random);
-						// can be used for the predictions of our approach
-						DyadRankingDataset shuffeledOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
-
-						// Now calculate Marcels losses:
-						for (int j = 0; j < kLengths.length; j++) {
-							int k = kLengths[j];
-
-							// Top K-Kendalls distance losses
-							double topKKTAU_1NN = DyadRankingLossUtil.computeAverageLoss(new KendallsTauOfTopK(k, 0.5d),
-									trueOrdering, baseline_1NN_predictedRanking);
-							lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-									k, APPROACH.ONE_NN_BASELINE, topKKTAU_1NN);
-
-							double topKKTAU_AverageRank = DyadRankingLossUtil.computeAverageLoss(
-									new KendallsTauOfTopK(k, 0.5d), trueOrdering,
-									baseline_AverageRank_predictedRanking);
-							lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-									k, APPROACH.AVERAGE_RANK_BASELINE, topKKTAU_AverageRank);
-
-							List<IDyadRankingInstance> predicted = ranker.predict(shuffeledOrdering);
-							List<Dyad> topKPredictedDyads = new ArrayList<>();
-							for (int l = 0; l < k; l++) {
-								topKPredictedDyads.add(predicted.get(0).getDyadAtPosition(l));
-							}
-
-							// wever number min
-							double predictedMin = topKPredictedDyads.stream().mapToDouble(x -> (Double) map.get(x))
-									.min().orElseThrow(NoSuchElementException::new);
-							double realMin = testDyads.stream().sorted(DyadComparator::compare).limit(k)
-									.mapToDouble(Pair::getX).min().orElseThrow(NoSuchElementException::new);
-							double weverNumberMin = Math.abs(predictedMin - realMin);
-
-							// wever number avg
-							double predictedAvg = topKPredictedDyads.stream().mapToDouble(x -> (Double) map.get(x))
-									.average().orElseThrow(NoSuchElementException::new);
-							double realAvg = testDyads.stream().sorted(DyadComparator::compare).limit(k)
-									.mapToDouble(Pair::getX).average().orElseThrow(NoSuchElementException::new);
-							double weverNumberAvg = Math.abs(predictedAvg - realAvg);
-
-							lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.DYADRANKING, weverNumberAvg);
-							lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.DYADRANKING, weverNumberMin);
-
-							// wevre number for baseline ranking 1NN
-							List<Pair<Double, Dyad>> topKOfBaseLine_1NN = baseline_1NN_dyadPairs.subList(0, k);
-							// attention here: the scores are the scores from the wrong dataset, we have to
-							// map them back first!
-							double avgOfBaseline_1NN = topKOfBaseLine_1NN.stream()
-									.mapToDouble(x -> (Double) map.get(x.getY())).average()
-									.orElseThrow(NoSuchElementException::new);
-							double minOfBaseline_1NN = topKOfBaseLine_1NN.stream()
-									.mapToDouble(x -> (Double) map.get(x.getY())).min()
-									.orElseThrow(NoSuchElementException::new);
-
-							double baseline_1NN_AvgLoss = Math.abs(avgOfBaseline_1NN - realAvg);
-							double baseline_1NN_MinLoss = Math.abs(minOfBaseline_1NN - realMin);
-
-							lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.ONE_NN_BASELINE, baseline_1NN_AvgLoss);
-							lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.ONE_NN_BASELINE, baseline_1NN_MinLoss);
-
-							// wever number for baseline average rank
-							List<Pair<Double, Dyad>> topKOfBaseLine_AverageRank = baseline_AverageRank_dyadPairs
-									.subList(0, k);
-							// attention here: the scores are the scores from the wrong dataset, we have to
-							// map them back first!
-							double avgOfBaseline_AverageRank = topKOfBaseLine_AverageRank.stream()
-									.mapToDouble(x -> (Double) map.get(x.getY())).average()
-									.orElseThrow(NoSuchElementException::new);
-							double minOfBaseline_AverageRank = topKOfBaseLine_AverageRank.stream()
-									.mapToDouble(x -> (Double) map.get(x.getY())).min()
-									.orElseThrow(NoSuchElementException::new);
-
-							double baseline_AverageRank_AvgLoss = Math.abs(avgOfBaseline_AverageRank - realAvg);
-							double baseline_AverageRank_MinLoss = Math.abs(minOfBaseline_AverageRank - realMin);
-
-							lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.AVERAGE_RANK_BASELINE, baseline_AverageRank_AvgLoss);
-							lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
-									innerAveragingRun, k, APPROACH.AVERAGE_RANK_BASELINE, baseline_AverageRank_MinLoss);
-
-						}
-
-						double kendallsTau = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(),
-								trueOrdering, ranker, random);
-
-						lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
-								APPROACH.DYADRANKING, kendallsTau);
-						scaler.transformAlternatives(shuffeledOrdering);
-						double normalizedKendallsTau = DyadRankingLossUtil.computeAverageLoss(
-								new KendallsTauDyadRankingLoss(), trueOrdering, normalizedRanker, random);
-						lossUpdater.updateKendallsTauAverage(subSamplingSize, mccvSplit, testDatasetId,
-								innerAveragingRun, APPROACH.DYADRANKING, normalizedKendallsTau);
-
+				try {
+					if (!isAValidConfig(potentiallyConfig)) {
+						return;
 					}
 
-				}
-			} catch (IOException | ClassNotFoundException e) {
-				System.err.println("Failed to deserialize scaler!");
-				return;
-			}
+					JSONObject jsonObject = new ObjectMapper().readValue(potentiallyConfig, JSONObject.class);
 
+					System.out.println("Starting " + potentiallyConfig.getName());
+					// start evaluating here
+
+					// outer loop: mccv split
+
+					String rankerPath = (String) jsonObject.get(JSONConfigKeys.RANKER_PATH);
+
+					// String normalizedRankerPath = (String)
+					// jsonObject.get(JSONConfigKeys.RANKER_WITH_NORMALIZATION);
+
+					// String scalerPath = (String) jsonObject.get(JSONConfigKeys.SCALER_PATH);
+
+					@SuppressWarnings("unchecked")
+					List<Integer> testDatasets = (List<Integer>) jsonObject.get(JSONConfigKeys.TEST_DATASETS);
+
+					@SuppressWarnings("unchecked")
+					List<Integer> trainDatasets = (List<Integer>) jsonObject.get(JSONConfigKeys.TRAIN_DATASETS);
+
+					int mccvSplit = (int) jsonObject.get(JSONConfigKeys.MCCV_INDEX);
+
+					int subSamplingSize = (int) jsonObject.get(JSONConfigKeys.SUBSAMPLING_SIZE);
+
+					String cacheKey = Integer.toString(mccvSplit);
+					System.out.println("Start caching dyads for speedup...");
+					cacheTrainDyads(trainDatasets, adapter, cacheKey);
+
+					// System.out.println("testingDatasets are ..." + testDatasets.toString());
+					PLNetDyadRanker ranker = new PLNetDyadRanker();
+
+					ranker.loadModelFromFile(rankerPath);
+
+					// PLNetDyadRanker normalizedRanker = new PLNetDyadRanker();
+					// normalizedRanker.loadModelFromFile(normalizedRankerPath);
+System.out.println("Start to train 1NN Baseline...");
+					OneNNBaseline oneNNBaseline = new OneNNBaseline(cachedDyads);
+					oneNNBaseline.buildClassifier(trainDatasets, adapter);
+
+					AverageRankBaseline averageRankBaseline = new AverageRankBaseline(cachedDyads);
+
+					// try (ObjectInputStream oin = new ObjectInputStream(new
+					// FileInputStream(scalerPath))) {
+
+					// DyadMinMaxScaler scaler = (DyadMinMaxScaler) oin.readObject();
+
+					for (int testDatasetId : testDatasets) {
+						System.out.println(
+								"Starting testdataset " + testDatasetId + " for " + potentiallyConfig.getName());
+
+						double closestDatasetId = oneNNBaseline.getClosestDatasetId(testDatasetId, adapter);
+
+						/* Now do 10 repeats for averaging */
+						for (int innerAveragingRun = 0; innerAveragingRun < avgRun; innerAveragingRun++) {
+
+							Random random = new Random(innerAveragingRun + mccvSplit);
+
+							/*
+							 * Draw the dyads that should be ranked (careful that the dyads have a distinct
+							 * score to not cunfuse the Kendalls Taus measures)
+							 */
+							List<Pair<Double, Dyad>> testDyads = getDyadRankingInstanceForDataset(testDatasetId,
+									adapter, random);
+
+							List<Dyad> orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
+									.collect(Collectors.toList());
+							DyadRankingDataset trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
+
+							/* Now get the prediction for the 1 NN classifier */
+							// just be careful that the ordering of the dyads do not affect the baseline
+							// here
+							Collections.shuffle(testDyads, random);
+							List<Dyad> shuffeledDyads = testDyads.stream().map(Pair::getY).collect(Collectors.toList());
+
+							List<Pair<Double, Dyad>> baseline_1NN_dyadPairs = oneNNBaseline
+									.get1NNRanking(closestDatasetId, shuffeledDyads, cacheKey);
+							List<Dyad> baseline_1NN_orderedDyads = baseline_1NN_dyadPairs.stream().map(Pair::getY)
+									.collect(Collectors.toList());
+							DyadRankingDataset baseline_1NN_predictedRanking = DyadRankingDataset
+									.fromOrderedDyadList(baseline_1NN_orderedDyads);
+
+							/* Now get the predicition of the AverageRank baseline */
+							// again, be careful that no ordering information influences this
+
+							Collections.shuffle(testDyads, random);
+							shuffeledDyads = testDyads.stream().map(Pair::getY).collect(Collectors.toList());
+							// returns an already ordered list!
+							List<Pair<Double, Dyad>> baseline_AverageRank_dyadPairs = averageRankBaseline
+									.getAverageRankForDatasets(shuffeledDyads, cacheKey);
+
+							List<Dyad> baseline_AverageRank_orderedDyads = baseline_AverageRank_dyadPairs.stream()
+									.map(Pair::getY).collect(Collectors.toList());
+							DyadRankingDataset baseline_AverageRank_predictedRanking = DyadRankingDataset
+									.fromOrderedDyadList(baseline_AverageRank_orderedDyads);
+
+							/* Used for marcels losses on the baselines */
+							Map<Object, Object> map = testDyads.stream()
+									.collect(Collectors.toMap(Pair::getY, Pair::getX));
+
+							for (int j = 0; j < kLengths.length; j++) {
+								double topKKTAU = DyadRankingLossUtil.computeAverageLoss(
+										new KendallsTauOfTopK(kLengths[j], 0.5d), trueOrdering, ranker, random);
+								lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, kLengths[j], APPROACH.DYADRANKING, topKKTAU);
+							}
+
+							// re-order the true ordering, in case that the loss function messes this up!
+							orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
+									.collect(Collectors.toList());
+							trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
+
+							// 1NN Baseline KT
+
+							double kTau_1NN = DyadRankingLossUtil.computeAverageLoss(new KendallsTauDyadRankingLoss(),
+									trueOrdering, baseline_1NN_predictedRanking);
+
+							lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
+									APPROACH.ONE_NN_BASELINE, kTau_1NN);
+
+							// again reordering time!
+							orderedDyads = testDyads.stream().sorted(DyadComparator::compare).map(Pair::getY)
+									.collect(Collectors.toList());
+							trueOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
+
+							// Average Rank KT
+							double kTau_AverageRank = DyadRankingLossUtil.computeAverageLoss(
+									new KendallsTauDyadRankingLoss(), trueOrdering,
+									baseline_AverageRank_predictedRanking);
+
+							lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
+									APPROACH.AVERAGE_RANK_BASELINE, kTau_AverageRank);
+
+							List<Dyad> shuffelledDyads = testDyads.stream().map(Pair::getY)
+									.collect(Collectors.toList());
+							Collections.shuffle(shuffelledDyads, random);
+							// can be used for the predictions of our approach
+							DyadRankingDataset shuffeledOrdering = DyadRankingDataset.fromOrderedDyadList(orderedDyads);
+
+							// Now calculate Marcels losses:
+							for (int j = 0; j < kLengths.length; j++) {
+								int k = kLengths[j];
+
+								// Top K-Kendalls distance losses
+								double topKKTAU_1NN = DyadRankingLossUtil.computeAverageLoss(
+										new KendallsTauOfTopK(k, 0.5d), trueOrdering, baseline_1NN_predictedRanking);
+								lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.ONE_NN_BASELINE, topKKTAU_1NN);
+
+								double topKKTAU_AverageRank = DyadRankingLossUtil.computeAverageLoss(
+										new KendallsTauOfTopK(k, 0.5d), trueOrdering,
+										baseline_AverageRank_predictedRanking);
+								lossUpdater.updateTopKKTAULoss(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.AVERAGE_RANK_BASELINE, topKKTAU_AverageRank);
+
+								List<IDyadRankingInstance> predicted = ranker.predict(shuffeledOrdering);
+								List<Dyad> topKPredictedDyads = new ArrayList<>();
+								for (int l = 0; l < k; l++) {
+									topKPredictedDyads.add(predicted.get(0).getDyadAtPosition(l));
+								}
+
+								// wever number min
+								double predictedMin = topKPredictedDyads.stream().mapToDouble(x -> (Double) map.get(x))
+										.min().orElseThrow(NoSuchElementException::new);
+								double realMin = testDyads.stream().sorted(DyadComparator::compare).limit(k)
+										.mapToDouble(Pair::getX).min().orElseThrow(NoSuchElementException::new);
+								double weverNumberMin = Math.abs(predictedMin - realMin);
+
+								// wever number avg
+								double predictedAvg = topKPredictedDyads.stream().mapToDouble(x -> (Double) map.get(x))
+										.average().orElseThrow(NoSuchElementException::new);
+								double realAvg = testDyads.stream().sorted(DyadComparator::compare).limit(k)
+										.mapToDouble(Pair::getX).average().orElseThrow(NoSuchElementException::new);
+								double weverNumberAvg = Math.abs(predictedAvg - realAvg);
+
+								lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.DYADRANKING, weverNumberAvg);
+								lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.DYADRANKING, weverNumberMin);
+
+								// wevre number for baseline ranking 1NN
+								List<Pair<Double, Dyad>> topKOfBaseLine_1NN = baseline_1NN_dyadPairs.subList(0, k);
+								// attention here: the scores are the scores from the wrong dataset, we have to
+								// map them back first!
+								double avgOfBaseline_1NN = topKOfBaseLine_1NN.stream()
+										.mapToDouble(x -> (Double) map.get(x.getY())).average()
+										.orElseThrow(NoSuchElementException::new);
+								double minOfBaseline_1NN = topKOfBaseLine_1NN.stream()
+										.mapToDouble(x -> (Double) map.get(x.getY())).min()
+										.orElseThrow(NoSuchElementException::new);
+
+								double baseline_1NN_AvgLoss = Math.abs(avgOfBaseline_1NN - realAvg);
+								double baseline_1NN_MinLoss = Math.abs(minOfBaseline_1NN - realMin);
+
+								lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.ONE_NN_BASELINE, baseline_1NN_AvgLoss);
+								lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.ONE_NN_BASELINE, baseline_1NN_MinLoss);
+
+								// wever number for baseline average rank
+								List<Pair<Double, Dyad>> topKOfBaseLine_AverageRank = baseline_AverageRank_dyadPairs
+										.subList(0, k);
+								// attention here: the scores are the scores from the wrong dataset, we have to
+								// map them back first!
+								double avgOfBaseline_AverageRank = topKOfBaseLine_AverageRank.stream()
+										.mapToDouble(x -> (Double) map.get(x.getY())).average()
+										.orElseThrow(NoSuchElementException::new);
+								double minOfBaseline_AverageRank = topKOfBaseLine_AverageRank.stream()
+										.mapToDouble(x -> (Double) map.get(x.getY())).min()
+										.orElseThrow(NoSuchElementException::new);
+
+								double baseline_AverageRank_AvgLoss = Math.abs(avgOfBaseline_AverageRank - realAvg);
+								double baseline_AverageRank_MinLoss = Math.abs(minOfBaseline_AverageRank - realMin);
+
+								lossUpdater.updateWeverNumberAvg(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.AVERAGE_RANK_BASELINE,
+										baseline_AverageRank_AvgLoss);
+								lossUpdater.updateWeverNumberMin(subSamplingSize, mccvSplit, testDatasetId,
+										innerAveragingRun, k, APPROACH.AVERAGE_RANK_BASELINE,
+										baseline_AverageRank_MinLoss);
+
+							}
+
+							double kendallsTau = DyadRankingLossUtil
+									.computeAverageLoss(new KendallsTauDyadRankingLoss(), trueOrdering, ranker, random);
+
+							lossUpdater.updateKendallsTau(subSamplingSize, mccvSplit, testDatasetId, innerAveragingRun,
+									APPROACH.DYADRANKING, kendallsTau);
+
+							// scaler.transformAlternatives(shuffeledOrdering);
+							// double normalizedKendallsTau = DyadRankingLossUtil.computeAverageLoss(
+							// new KendallsTauDyadRankingLoss(), trueOrdering, normalizedRanker, random);
+							// lossUpdater.updateKendallsTauAverage(subSamplingSize, mccvSplit,
+							// testDatasetId,
+							// innerAveragingRun, APPROACH.DYADRANKING, normalizedKendallsTau);
+
+						}
+
+					}
+					// } catch (IOException | ClassNotFoundException e) {
+					// e.printStackTrace();
+					// System.err.println("Failed to deserialize scaler!");
+					// return;
+					// }
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}, null);
+
+		}
+		System.out.println("Finished adding tasks...");
+		for (int i = 0; i < submittedTasks; i++) {
+			completionService.take();
 		}
 	}
 
-	private static void cacheTrainDyads(List<Integer> trainDatasets, SQLAdapter adapter, String key)
+	private static synchronized void cacheTrainDyads(List<Integer> trainDatasets, SQLAdapter adapter, String key)
 			throws SQLException {
 		ResultSet rs = adapter.getResultsOfQuery("SELECT score, y, dataset, id FROM " + dyadTable + " WHERE dataset IN "
 				+ trainDatasets.stream().map(i -> i.toString()).collect(Collectors.joining(",", "(", ")")));
@@ -316,8 +361,8 @@ public class JSONConfigBasedLossUpdater {
 		cachedDyads.put(key, toReturn);
 	}
 
-	private static List<Pair<Double, Dyad>> getDyadRankingInstanceForDataset(int datasetId, SQLAdapter adapter)
-			throws Exception {
+	private static List<Pair<Double, Dyad>> getDyadRankingInstanceForDataset(int datasetId, SQLAdapter adapter,
+			Random random) throws Exception {
 		List<Pair<Double, Dyad>> toReturn = new ArrayList<>();
 		ResultSet resSet = adapter.getResultsOfQuery("SELECT id FROM " + dyadTable + " WHERE dataset=" + datasetId);
 		List<Integer> allIdsForDataset = new ArrayList<>();
@@ -361,9 +406,10 @@ public class JSONConfigBasedLossUpdater {
 		}
 
 		JSONObject jsonObject = new ObjectMapper().readValue(potentiallyConfig, JSONObject.class);
-		if (!jsonObject.containsKey(JSONConfigKeys.RANKER_WITH_NORMALIZATION)
-				|| !jsonObject.containsKey(JSONConfigKeys.RANKER_PATH)
-				|| !new File((String) jsonObject.get(JSONConfigKeys.RANKER_WITH_NORMALIZATION)).exists()
+		if (
+				//!jsonObject.containsKey(JSONConfigKeys.RANKER_WITH_NORMALIZATION) ||
+				 !jsonObject.containsKey(JSONConfigKeys.RANKER_PATH)
+			//	|| !new File((String) jsonObject.get(JSONConfigKeys.RANKER_WITH_NORMALIZATION)).exists()
 				|| !new File((String) jsonObject.get(JSONConfigKeys.RANKER_PATH)).exists()) {
 			System.out.println("Not all rankers found for " + potentiallyConfig.getName());
 			isAValidConfig = false;
